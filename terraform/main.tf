@@ -111,8 +111,11 @@ resource "aws_dynamodb_table" "intake" {
     type = "S"
   }
 
-  # No server_side_encryption block. Defaults to AWS-owned key.
-  # GAP-02: capstone learner expected to add this with a customer-owned key.
+  # GAP-02: SC.L2-3.13.11 · NIST SP 800-171 Rev 3: 03.13.11
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.workload.arn
+  }
 }
 
 ######################################################################
@@ -205,8 +208,13 @@ resource "aws_lambda_function" "intake" {
     }
   }
 
-  # GAP-05: no vpc_config block. Learner expected to add one referencing
-  # aws_subnet.private[*] and a hardened security group.
+  # GAP-05: SC.L2-3.13.1 · NIST SP 800-171 Rev 3: 03.13.01
+  vpc_config {
+    subnet_ids         = aws_subnet.private[*].id
+    security_group_ids = [aws_security_group.lambda.id]
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.lambda_vpc]
 }
 
 ######################################################################
