@@ -63,14 +63,13 @@ resource "aws_kms_key" "evidence" {
         Resource  = "*"
       },
       {
-        # CloudTrail (M3). SourceArn = confused-deputy guard. Trail name must match M3.
+        # CloudTrail encrypt (M3). SourceArn = confused-deputy guard. Trail name must match cloudtrail.tf.
         # https://docs.aws.amazon.com/awscloudtrail/latest/userguide/create-kms-key-policy-for-cloudtrail.html
-        Sid       = "Allow CloudTrail encrypt and describe"
+        Sid       = "Allow CloudTrail encrypt trail logs"
         Effect    = "Allow"
         Principal = { Service = "cloudtrail.amazonaws.com" }
         Action = [
           "kms:GenerateDataKey*",
-          "kms:Decrypt",
           "kms:DescribeKey",
         ]
         Resource = "*"
@@ -79,6 +78,13 @@ resource "aws_kms_key" "evidence" {
             "aws:SourceArn" = "arn:aws:cloudtrail:${var.aws_region}:${data.aws_caller_identity.current.account_id}:trail/${local.name_prefix}-mgmt-${local.suffix}"
           }
         }
+      },
+      {
+        Sid       = "Allow CloudTrail decrypt"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "kms:Decrypt"
+        Resource  = "*"
       }
     ]
   })
