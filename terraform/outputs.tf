@@ -44,3 +44,13 @@ output "evidence_kms_key_arn" {
   value       = aws_kms_key.evidence.arn
   description = "Evidence CMK ARN (vault + trail)."
 }
+
+output "gha_plan_role_arn" {
+  value       = aws_iam_role.gha_plan.arn
+  description = "GitHub Actions OIDC role for terraform plan (ReadOnlyAccess)."
+}
+
+output "gha_apply_role_arn" {
+  value       = aws_iam_role.gha_apply.arn
+  description = "GitHub Actions OIDC role for terraform apply (main branch only)."
+}

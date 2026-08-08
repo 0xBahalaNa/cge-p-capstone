@@ -75,6 +75,50 @@ cgep-app-starter/
     └── intake.sh
 ```
 
+## Terraform remote state (bootstrap once)
+
+The S3 backend bucket cannot be managed by the Terraform root whose state it holds.
+Create it once out-of-band, then migrate local state into it.
+
+```bash
+# 1. Create the bucket (us-east-1: no LocationConstraint)
+aws s3api create-bucket \
+  --bucket cge-p-capstone-tfstate-08072026-2056 \
+  --region us-east-1
+
+# 2. Versioning — recoverable prior generations if a migration/apply corrupts state
+aws s3api put-bucket-versioning \
+  --bucket cge-p-capstone-tfstate-08072026-2056 \
+  --versioning-configuration Status=Enabled
+
+# 3. Block all public access — state is a full infrastructure map
+aws s3api put-public-access-block \
+  --bucket cge-p-capstone-tfstate-08072026-2056 \
+  --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+# 4. SSE-S3 (AES256) — no CMK; state holds no CUI
+aws s3api put-bucket-encryption \
+  --bucket cge-p-capstone-tfstate-08072026-2056 \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+```
+
+### Migrate local state (after the backend block is in `terraform/main.tf`)
+
+```bash
+# Hard gate: backup before migrate (primary is 0 bytes after a prior migrate)
+SRC=terraform/terraform.tfstate
+[ -s "$SRC" ] || SRC=terraform/terraform.tfstate.backup
+test -s "$SRC" || { echo "no state to back up — STOP"; exit 1; }
+cp "$SRC" ~/tfstate-backup-$(date +%Y%m%d).tfstate
+
+cd terraform
+terraform init -migrate-state   # answer "yes" when prompted
+terraform plan   # MUST report: no changes to EXISTING resources
+                 # (OIDC additions in oidc-trust.tf are expected in this commit)
+```
+
 ## License
 
 MIT. Fork freely. Submissions remain learners' own work.
