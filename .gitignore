@@ -1,6 +1,5 @@
 # Terraform
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars
@@ -16,4 +15,9 @@ terraform/lambda/handler.zip
 
 # Local
 evidence/
+evidence-out/
+*.cosign.bundle
+conftest.txt
+opa-test.txt
+apply.txt
 .DS_Store

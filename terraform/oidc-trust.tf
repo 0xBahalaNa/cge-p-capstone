@@ -28,8 +28,14 @@ resource "aws_iam_role" "gha_plan" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
+        # GitHub emits the immutable, ID-qualified subject for this repo:
+        #   repo:<owner>@120359627/<repo>@1320990934:pull_request
+        # Confirmed by decoding the token's sub claim in a workflow run on
+        # 2026-08-09, after the name-based pattern failed to match. The numeric
+        # IDs are the point: they survive a rename and cannot be claimed by
+        # someone who later registers a released repo name.
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:0xBahalaNa/cge-p-capstone:*"
+          "token.actions.githubusercontent.com:sub" = "repo:0xBahalaNa@120359627/cge-p-capstone@1320990934:*"
         }
       }
     }]
@@ -58,7 +64,7 @@ resource "aws_iam_role" "gha_apply" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:0xBahalaNa/cge-p-capstone:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = "repo:0xBahalaNa@120359627/cge-p-capstone@1320990934:ref:refs/heads/main"
         }
       }
     }]
