@@ -1,6 +1,7 @@
 ######################################################################
-# Layer 1 hardening overrides — GAP-01, GAP-03, GAP-04, GAP-05.
-# GAP-02 (DynamoDB SSE) and GAP-05 vpc_config land in main.tf.
+# Layer 1 hardening overrides — GAP-01, GAP-03–GAP-06, GAP-08.
+# GAP-02 (DynamoDB SSE), GAP-05 vpc_config, GAP-06 Lambda wiring,
+# and GAP-08 stage settings land in main.tf.
 # CMMC L2 + NIST SP 800-171 Rev 3 control pairs per resource below.
 ######################################################################
 
@@ -139,4 +140,28 @@ resource "aws_security_group" "lambda" {
 resource "aws_iam_role_policy_attachment" "lambda_vpc" {
   role       = aws_iam_role.lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+# GAP-06: DLQ for failed intake invocations (PHI may be in the event body).
+# SI.L2-3.14.6 · NIST SP 800-171 Rev 3: 03.14.06
+resource "aws_sqs_queue" "lambda_dlq" {
+  name                      = "${local.name_prefix}-dlq-${local.suffix}"
+  kms_master_key_id         = aws_kms_key.workload.arn # CMK, not SSE-SQS
+  message_retention_seconds = 1209600                  # 14 days (SQS max)
+}
+
+# GAP-06: Lambda must be able to SendMessage to its own DLQ (scoped ARN).
+# SI.L2-3.14.6 · NIST SP 800-171 Rev 3: 03.14.06
+# Third statement lives on the existing inline policy in main.tf — see there.
+# X-Ray write access: managed policy (X-Ray actions have no resource-level perms).
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
+# GAP-08: destination for API Gateway HTTP API access logs.
+# AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.01
+resource "aws_cloudwatch_log_group" "apigw" {
+  name              = "/aws/apigateway/${local.name_prefix}-${local.suffix}"
+  retention_in_days = 30
 }

@@ -119,6 +119,28 @@ terraform plan   # MUST report: no changes to EXISTING resources
                  # (OIDC additions in oidc-trust.tf are expected in this commit)
 ```
 
+## Layer 2 — policy suite
+
+Seven Conftest/OPA policies under `policies/` map 1:1 to CMMC L2 practices and catch the eight gaps in `GAPS.md`, with one declared exception: `GAPS.md` folds reserved concurrency into GAP-06, and this account's Lambda `ConcurrentExecutions` quota is 10, which cannot support a reservation — so the suite checks the DLQ and X-Ray halves of GAP-06 only. The policies read `terraform show -json` planned values (not HCL).
+
+The unit tests need nothing but `opa`:
+
+```bash
+opa test policies/ -v
+```
+
+Running the suite against a real plan additionally needs AWS credentials and an initialised backend:
+
+```bash
+cd terraform && terraform init && terraform plan -out=tfplan && terraform show -json tfplan > ../tfplan.json
+cd ..
+conftest test --all-namespaces -p policies/ tfplan.json
+```
+
+`--all-namespaces` is required: packages are `cgep.*`, and Conftest defaults to `main` (a vacuous green without the flag).
+
+`tfplan.json` is gitignored — it embeds the real account ID in ARNs.
+
 ## License
 
 MIT. Fork freely. Submissions remain learners' own work.

@@ -42,7 +42,8 @@ resource "aws_iam_role_policy_attachment" "gha_plan_readonly" {
 }
 
 # Apply role: main branch only (StringEquals on sub — drive-slot Condition).
-# Inline policy: nine namespaces this stack uses; Resource "*" (Decision 29).
+# Inline policy: ten namespaces this stack uses; Resource "*" (Decision 29).
+# Tenth namespace: sqs:* for the GAP-06 Lambda DLQ (M7).
 resource "aws_iam_role" "gha_apply" {
   name = "${local.name_prefix}-gha-apply-${local.suffix}"
 
@@ -82,6 +83,7 @@ resource "aws_iam_role_policy" "gha_apply" {
         "cloudtrail:*",
         "logs:*",
         "iam:*",
+        "sqs:*"
       ]
       Resource = "*"
     }]

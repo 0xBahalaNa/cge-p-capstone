@@ -1,12 +1,12 @@
 ######################################################################
-# Evidence vault — S3 Object Lock (GOVERNANCE / 1-day default).
+# Evidence vault — S3 Object Lock (GOVERNANCE / 30-day default).
 # Layer 1 deliverable (brief bullet 2). Not a starter-gap close;
-# GAP-01–05/07 land in M4–M5; GAP-06/08 are out of this increment.
+# GAP-01–05/07 land in M4–M5; GAP-06/08 close in M7.
 # CMMC L2: AU.L2-3.3.8 · NIST SP 800-171 Rev 3: 03.03.08 (Audit and Accountability)
 #
 # Known limit: Object Lock protects object versions, not the bucket, and only
 # until retention expires — an empty vault is deletable, a version older than
-# evidence_retention_days (1) is deletable by anyone with s3:DeleteObjectVersion,
+# evidence_retention_days (30) is deletable by anyone with s3:DeleteObjectVersion,
 # and unexpired GOVERNANCE retention is bypassable by any holder of
 # s3:BypassGovernanceRetention (here, the operator). COMPLIANCE mode closes only
 # the bypass; the empty-bucket and expiry paths survive it.
