@@ -212,6 +212,62 @@ message. GAP-06 closes as the brief specifies; genuine async-failure capture wou
 restructuring the intake path. The real `SI.L2-3.14.6` evidence here is the API Gateway
 access log, the Lambda `Errors` metric, and the X-Ray trace.
 
+**The trail bucket holds two encryption generations, and no policy in this suite was
+watching.** Until 2026-08-08 the trail carried no `kms_key_id`, so CloudTrail PUT each
+log object with an explicit `x-amz-server-side-encryption: AES256` header. Bucket default
+encryption is a *fallback* — it supplies a setting when the request specifies none, and
+has no power to override a caller that states its own. The bucket therefore reported
+`aws:kms` with the evidence CMK while its objects were **SSE-S3, under a key S3 manages
+internally** — not an AWS-managed KMS key such as `aws/s3`, which would still have a key
+policy and an audit trail. Setting `kms_key_id` on the trail fixed it. Encryption is
+per-object and not retroactive, so the 754 objects written before the fix should be taken
+as remaining `AES256`, with everything after CMK-encrypted.
+
+*Evidence, separated from inference.* **Observed:** `get-bucket-encryption` returned
+`aws:kms`; `head-object` returned `AES256` at six points spanning the full delivery
+history; after the fix, `LatestDeliveryError` stayed empty, `LatestDeliveryTime` advanced,
+and a newly delivered object returned `aws:kms` under the evidence CMK. **Mechanism, not
+observation:** those three together are what establish delivery survived, because
+`IsLogging` reads `true` even while every delivery fails on a KMS `AccessDenied` — that is
+documented CloudTrail behaviour, never reproduced here. **Inferred:** that *all* 754
+pre-fix objects were SSE-S3 (six samples plus the mechanism, not an exhaustive scan), and
+that the CMK's two CloudTrail key-policy statements were never exercised (sound from the
+mechanism, but nothing in the sweep observed KMS usage directly; the CloudTrail
+`kms:GenerateDataKey` event history would prove it).
+
+The honest generalisation is narrower than it first looked, and less flattering. **This
+was a missing rule, not a limit of plan-time analysis.** `kms_key_id` is an ordinary
+Terraform argument that Terraform renders into `planned_values`, so a correctly written
+Rego rule on `aws_cloudtrail` fails the gate before a single object is written. No policy
+in `policies/` references `aws_cloudtrail` at all. Writing one is Layer 2 work deferred
+by choice, not Layer 3 work blocked by architecture.
+
+**The rule has to be written in the guarded form, and the first draft of this section got
+that wrong** — which is worth recording, because it is the same defect the M7 audit spent
+two rounds removing from the suite. `kms_key_id != ""` **fails open**: on a create plan
+the unset optional renders `null`, `null != ""` succeeds in Rego, the helper holds, the
+`not` fails, and the gate goes green. Proven by evaluation, not argued:
+
+| predicate | denies on `""` | denies on `null` |
+|---|---|---|
+| `kms_key_id != ""` | yes | **no** |
+| `is_string(kms_key_id)` then `!= ""` | yes | yes |
+
+The suite's own convention is already the guarded shape (`sc_3_13_11_encryption_at_rest.rego:20-36`
+denies via `not sse_configured(...)`), and any rule added here must follow it.
+
+**Coverage alone would not have caught this either.** GAP-01's rule filters
+`bucket.name == "uploads"` per Decision 43, so it never evaluated the trail bucket — but
+had it done so it would have **passed green anyway**, because the bucket's SSE
+configuration genuinely was `aws:kms` with the CMK. The scoping is not what let this
+through; the *altitude* is. A bucket-level encryption check is not evidence that the
+objects in the bucket are encrypted that way. That is the genuine limit here, and it is
+why a post-apply `head-object` spot-check is still worth having behind the trail rule.
+
+The real finding underneath all of it: **the suite maps 1:1 to the eight starter gaps and
+therefore watches nothing this repo built itself.** The remediations are unpoliced. This
+is the first defect that found, and it is unlikely to be the only one.
+
 **Teardown does not work from `make destroy` alone.** At 30 days GOVERNANCE it fails
 `BucketNotEmpty` once any evidence object exists; locked versions must be removed first
 with `aws s3api delete-object --bypass-governance-retention`, or the retention has to
@@ -249,10 +305,30 @@ is visible in `terraform plan`.
 - The evidence key's `Allow CloudTrail encrypt trail logs` Sid names a verb rather than
   the two actions it actually grants (`kms:GenerateDataKey*`, `kms:DescribeKey`).
 
-**Verification owed:**
-- Hand-run `terraform apply`, then `make test`, to confirm the scoped GAP-07 policy still
-  returns a valid `submission_id`.
-- Post-apply checks deferred from PRs #3–#4: `get-trail` / `get-trail-status`
-  (`IsMultiRegionTrail`, `LogFileValidationEnabled`, `IsLogging`); uploads encryption,
-  versioning, and SecureTransport deny; DynamoDB SSE-KMS; Lambda `VpcConfig`; both gateway
-  endpoints available on the private route table.
+**Verification — done 2026-08-08, against the live account:**
+- `make test` returns a valid `submission_id`, so the scoped GAP-07 policy did not break
+  the intake path.
+- `terraform plan` reports **No changes**; `conftest test --all-namespaces` is 10/10 at
+  exit 0; `opa test` is 39/39. All three re-run against the post-fix configuration — the
+  first pass graded a plan generated before `kms_key_id` was added, which proved nothing
+  about the code being shipped.
+- Post-apply checks deferred from PRs #3–#4, all confirmed: trail `IsMultiRegionTrail`,
+  `LogFileValidationEnabled`, `IsLogging`; uploads SSE-KMS under the workload CMK,
+  versioning `Enabled`, SecureTransport deny present; DynamoDB SSE type `KMS`; Lambda
+  `VpcConfig` with 2 subnets and 1 security group, tracing `Active`, DLQ attached; both
+  gateway endpoints `available` on the private route table; evidence vault Object Lock
+  `GOVERNANCE` / 30 days.
+- Added by that sweep, and the reason it was worth running: `head-object` on the trail
+  bucket showed `AES256` where the bucket config said `aws:kms`. See *Residual risk*.
+
+**Owed, and reclassified after the 2026-08-08 sweep:**
+- **A Rego rule for `aws_cloudtrail` requiring a CMK on the trail.** Layer 2, and it closes
+  the defect found above at plan time. It must use the guarded form —
+  `is_string(kms_key_id)` before `!= ""`, denied via `not has_trail_cmk(trail)` — because
+  a bare `kms_key_id != ""` fails open on the `null` a create plan renders. Deferred by
+  choice, not by architecture; see *Residual risk*.
+- More broadly: the suite maps 1:1 to the eight starter gaps, so **nothing polices the
+  remediations this repo added**. The trail-encryption defect is the first instance found;
+  it is unlikely to be the only one.
+- A post-apply `head-object` spot-check on the trail bucket, as defence in depth behind
+  that rule rather than as the primary control.

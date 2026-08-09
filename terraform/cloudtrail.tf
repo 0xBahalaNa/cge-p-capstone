@@ -1,7 +1,9 @@
 ######################################################################
 # CloudTrail — multi-region management events to dedicated log bucket.
 # CMMC L2: AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.01 (Audit and Accountability)
-# CMMC L2: SC.L2-3.13.11 · NIST SP 800-171 Rev 3: 03.13.11 (Cryptographic Protection — trail bucket SSE-KMS)
+# CMMC L2: SC.L2-3.13.11 · NIST SP 800-171 Rev 3: 03.13.11 (Cryptographic Protection —
+#          log objects SSE-KMS under the evidence CMK; see kms_key_id below for why the
+#          bucket's default encryption is not sufficient on its own)
 ######################################################################
 
 resource "aws_s3_bucket" "trail" {
@@ -79,6 +81,13 @@ resource "aws_cloudtrail" "mgmt" {
   is_multi_region_trail         = true
   include_global_service_events = true
   enable_log_file_validation    = true
+
+  # Must be set HERE, not left to the bucket's default encryption. Without it
+  # CloudTrail PUTs with an explicit `x-amz-server-side-encryption: AES256`
+  # header, and an explicit header overrides bucket default encryption — every
+  # log object lands SSE-S3, under a key S3 manages internally, while the bucket
+  # config still reads `aws:kms`. Verified against the live account 2026-08-08.
+  kms_key_id = aws_kms_key.evidence.arn
 
   depends_on = [aws_s3_bucket_policy.trail]
 }
