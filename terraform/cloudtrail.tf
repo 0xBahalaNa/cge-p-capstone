@@ -1,6 +1,6 @@
 ######################################################################
 # CloudTrail — multi-region management events to dedicated log bucket.
-# CMMC L2: AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.03 (Audit and Accountability)
+# CMMC L2: AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.01 (Audit and Accountability)
 # CMMC L2: SC.L2-3.13.11 · NIST SP 800-171 Rev 3: 03.13.11 (Cryptographic Protection — trail bucket SSE-KMS)
 ######################################################################
 
