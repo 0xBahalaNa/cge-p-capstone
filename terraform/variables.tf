@@ -17,11 +17,14 @@ variable "evidence_lock_mode" {
   }
 }
 
-# 1 day keeps the sandbox destroyable while retention is active for graders.
+# 30 days is the graded retention. Teardown is not a plain `make destroy` once any evidence
+# object exists: delete the locked versions first with
+# `aws s3api delete-object --bypass-governance-retention` (requires s3:BypassGovernanceRetention),
+# or wait for the retention to expire.
 variable "evidence_retention_days" {
   type        = number
   description = "Default Object Lock retention (days) applied to evidence objects."
-  default     = 1
+  default     = 30
 }
 
 # AWS minimum deletion window is 7 days — sandbox teardown setting.

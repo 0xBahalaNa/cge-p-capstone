@@ -148,9 +148,13 @@ resource "aws_s3_bucket" "uploads" {
 
 ######################################################################
 # Lambda — the intake handler.
-# GAP-05: not deployed inside the VPC.
-# GAP-06: no reserved concurrency, no DLQ, no X-Ray.
-# GAP-07: IAM role has dynamodb:* and s3:* on the resources (over-broad).
+# GAP-05: closed — vpc_config places the function in the private subnets.
+#         SC.L2-3.13.1 · NIST SP 800-171 Rev 3: 03.13.01
+# GAP-06: DLQ + X-Ray tracing on the intake Lambda (Decision B — reserved
+#         concurrency omitted: account ConcurrentExecutions=10 cannot reserve).
+#         SI.L2-3.14.6 · NIST SP 800-171 Rev 3: 03.14.06
+# GAP-07: closed — inline policy scoped to dynamodb:PutItem, s3:PutObject and
+#         sqs:SendMessage. AC.L2-3.1.5 · NIST SP 800-171 Rev 3: 03.01.05
 ######################################################################
 
 data "archive_file" "handler" {
@@ -178,6 +182,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 }
 
 # GAP-07: AC.L2-3.1.5 · NIST SP 800-171 Rev 3: 03.01.05
+# GAP-06: third statement — sqs:SendMessage scoped to the DLQ ARN.
 resource "aws_iam_role_policy" "lambda_inline" {
   name = "intake-data-access"
   role = aws_iam_role.lambda.id
@@ -196,6 +201,12 @@ resource "aws_iam_role_policy" "lambda_inline" {
         Effect   = "Allow"
         Action   = "s3:PutObject"
         Resource = "${aws_s3_bucket.uploads.arn}/*"
+      },
+      {
+        Sid      = "AllowSendMessageToDlq"
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.lambda_dlq.arn
       },
     ]
   })
@@ -217,6 +228,16 @@ resource "aws_lambda_function" "intake" {
     }
   }
 
+  # GAP-06: SI.L2-3.14.6 · NIST SP 800-171 Rev 3: 03.14.06
+  # Decision B: no reserved_concurrent_executions (account quota blocks it).
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+
   # GAP-05: SC.L2-3.13.1 · NIST SP 800-171 Rev 3: 03.13.01
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id
@@ -228,7 +249,8 @@ resource "aws_lambda_function" "intake" {
 
 ######################################################################
 # API Gateway — HTTP API in front of the Lambda.
-# GAP-08: no access logging, no throttling, no WAF.
+# GAP-08: access logging + throttling (WAF N/A — not attachable to HTTP API).
+#         AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.01
 ######################################################################
 
 resource "aws_apigatewayv2_api" "intake" {
@@ -254,7 +276,26 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.intake.id
   name        = "$default"
   auto_deploy = true
-  # GAP-08: no access_log_settings. Learner expected to wire CloudWatch logs.
+
+  # GAP-08: AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.01
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.apigw.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
+  }
+
+  default_route_settings {
+    throttling_burst_limit = 50
+    throttling_rate_limit  = 100
+  }
 }
 
 resource "aws_lambda_permission" "apigw" {
