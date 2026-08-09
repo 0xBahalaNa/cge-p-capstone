@@ -1,8 +1,16 @@
 # Capstone Writeup — decisions, deviations, and residual risk
 
-The record of *why* this capstone is shaped the way it is: the trade-offs taken, the
-places it deliberately departs from the brief, the risk it does not close, and the work
-still owed.
+**The primary framework for this capstone is CMMC Level 2, mapped to NIST SP 800-171
+Rev 3.** I chose it over HIPAA and SOC 2 for three reasons. It is the only one of the three
+that resolves to a numbered, machine-readable control catalog, which is what Layer 4 needs
+to dereference honestly. Its practices map cleanly onto the eight gaps the starter names,
+so the policy suite enforces real requirements rather than generic hygiene checks. And it
+is the framework closest to the federal and public-safety work I do, so I can defend the
+control interpretations rather than reciting them.
+
+The rest of this file is the record of *why* this capstone is shaped the way it is: the
+trade-offs taken, the places it deliberately departs from the brief, the risk it does not
+close, and the work still owed.
 
 GitHub Issues are disabled on this repo, so this file — not an issue tracker — is where
 deferred work and accepted risk live. Every entry below was a decision made during
@@ -12,6 +20,85 @@ Layers 1–2 (PRs #1–#7).
 > to what was built, but the wording is drafted, not yet rewritten in my own words. Do a
 > defense pass over the *Why it is built this way* section before this is put in front of
 > an assessor.
+
+---
+
+## Control coverage
+
+Eight gaps, all eight addressed in Terraform, all eight policed by Rego — seven policies
+covering eight gaps (GAP-01 and GAP-02 share `cgep.sc_3_13_11`).
+
+| Gap | Remediated in | Enforced by | CMMC L2 | 800-171 r3 |
+|---|---|---|---|---|
+| GAP-01 | `hardening.tf:8` | `cgep.sc_3_13_11` | SC.L2-3.13.11 | 03.13.11 |
+| GAP-02 | `main.tf:121` | `cgep.sc_3_13_11` | SC.L2-3.13.11 | 03.13.11 |
+| GAP-03 | `hardening.tf:22` | `cgep.sc_3_13_08` | SC.L2-3.13.8 | 03.13.08 |
+| GAP-04 | `hardening.tf:53` | `cgep.mp_3_08_09` | MP.L2-3.8.9 | 03.08.09 |
+| GAP-05 | `main.tf:241`, `hardening.tf:63` | `cgep.sc_3_13_01` | SC.L2-3.13.1 | 03.13.01 |
+| GAP-06 | `main.tf:231`, `hardening.tf:145` | `cgep.si_3_14_06` | SI.L2-3.14.6 | 03.14.06 |
+| GAP-07 | `main.tf:184` | `cgep.ac_3_01_05` | AC.L2-3.1.5 | 03.01.05 |
+| GAP-08 | `main.tf:280`, `hardening.tf:162` | `cgep.au_3_03_01` | AU.L2-3.3.1 | 03.03.01, 03.03.03 |
+
+Every Rev 3 pairing above was resolved through the NIST 800-53 cross-framework mapping
+table rather than inferred from the Rev 2 numbering, because Rev 3 consolidated and
+renumbered rather than renaming in place. Two of the eight required a judgment call that
+the numbering alone does not settle.
+
+**AU.L2-3.3.1 spans two Rev 3 requirements.** CMMC 3.3.1 says create *and retain* audit
+records. In Rev 3 that splits across `03.03.01` (event selection, from AU-2) and `03.03.03`
+(record generation, from AU-12). The Terraform comments cite `03.03.01` alone. Rather than
+churn five files the day before submission, the OSCAL component asserts both, since that is
+the artifact where the catalog is actually dereferenced.
+
+**SC.L2-3.13.11 is the cryptographic mechanism, not the at-rest property.** `03.13.11`
+maps from SC-13. Protection of information at rest is SC-28. The usfed-compliance
+crosswalk returns `03.08.05` for SC-28, but the NIST SP 800-171 Rev 3 catalog this
+component declares as its `source` titles `03.08.05` *Media Transport* — nothing in this
+system transports media. Rev 3's home for storage confidentiality here is `03.13.08`,
+which the component asserts directly (uploads SecureTransport deny plus the uploads SSE-KMS
+/ workload CMK addresses). No `related-requirement` prop is needed on `03.13.11`; the
+package on `03.13.08` still covers transmission only.
+
+---
+
+## The five decisions the brief asks me to defend
+
+**Region: `us-east-1`.** This is a sandbox holding synthetic data, so no residency
+requirement binds. It also removes two small frictions: CloudTrail global service events
+land natively, and `create-bucket` needs no `LocationConstraint`. If this held real PHI the
+decision would be driven by the customer's data residency obligations, not convenience, and
+I would say so in a change record rather than in a README.
+
+**Object Lock: GOVERNANCE at 30 days.** COMPLIANCE is the stronger chain of custody because
+nobody, including the account root, can delete a version before retention expires. I chose
+GOVERNANCE because this is a teardownable sandbox and COMPLIANCE would make it genuinely
+undestroyable for a month. That is a real weakening and I am not going to dress it up: any
+holder of `s3:BypassGovernanceRetention` can delete evidence inside the retention window,
+and in a single account that is the same operator who runs the pipeline. Retention is 30
+days rather than 1 so that a grader checking a week from now still sees active protection.
+
+**Apply strategy: automatic on merge to `main`.** The brief's first grading criterion is a
+chain that runs without manual intervention, so a post-merge approval gate would trade the
+thing being graded for a control I did not need. What stands between a pull request and a
+deploy is therefore the policy gate and branch protection, not a human. I tightened both to
+carry that weight: `main` requires the `gate` status check, and the apply role is assumable
+only from `refs/heads/main`, so a pull request run cannot deploy even if the workflow were
+edited to try.
+
+**Account architecture: single account.** A separate evidence account is the correct answer
+and I did not do it. Cost and setup time drove the call, but the honest consequence is that
+the separation between workload and evidence in this build is a *key* boundary, not an
+*account* boundary. Two CMKs with distinct key policies keep the Lambda role away from
+evidence, which is real, but it does not survive an operator with the apply role. In a
+production build the evidence vault belongs in an account whose only inbound principal is
+the pipeline, and this is the first thing I would change with another sprint.
+
+**Gap remediation: everything is fixed in Terraform; policy enforces that it stays fixed.**
+I did not leave any gap open to be caught only by a Rego rule. A policy that blocks a gap
+you never remediated does not protect anything, it just fails your own pipeline forever.
+The policies exist as regression guards: they read `terraform show -json` planned values, so
+they evaluate what is about to be built rather than what the HCL happens to say, and the red
+pull request in this repo's history is the proof that they fire.
 
 ---
 
@@ -143,6 +230,100 @@ answer on a vault the account can delete. This matters for Layer 4: the brief is
 
 ---
 
+## Pipeline evidence flow, traced end to end
+
+One real run, followed from commit to verifiable artifact. Run
+[`31327365987`](https://github.com/0xBahalaNa/cge-p-capstone/actions/runs/31327365987), commit
+`45b9ac8`.
+
+1. **Plan.** The `gate` job assumes the read-only OIDC role and runs
+   `terraform plan -lock=false`, then renders it with `terraform show -json`. The plan runs
+   unlocked because the role carries `ReadOnlyAccess` and the S3 backend's lock file is a
+   write. A plan that never mutates state does not need to hold the lock.
+2. **Policy check.** `conftest test --all-namespaces -p policies/ tfplan.json` plus
+   `opa test policies/`. The job fails on the real exit code. There is no `|| true` and no
+   `continue-on-error`, which means the gate is the only thing that decides whether step 3
+   ever runs.
+3. **Apply.** Only on a push to `main`, and only after `gate` passes. This job is where the
+   apply role is first configured, so a pull request run never holds credentials that could
+   deploy.
+4. **Sign.** `scripts/capture-evidence.sh` assembles the plan JSON, the Conftest output, the
+   `opa test` output, the apply log and a manifest into
+   `evidence-<sha>-<timestamp>.tar.gz`, then Cosign signs it keylessly through the same
+   GitHub OIDC token. No key material exists to be stolen, and the certificate binds the
+   signature to this repository's workflow at a specific ref.
+5. **Upload.** The tarball, its SHA-256 and the Cosign bundle land at
+   `s3://$EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/` under the evidence CMK, inheriting the vault's
+   30-day GOVERNANCE retention.
+
+Verification, run from a clean shell:
+
+```console
+$ scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/
+Verifying evidence-45b9ac8-20260809T174923Z.tar.gz from s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz
+ok  integrity   SHA-256 matches evidence-45b9ac8-20260809T174923Z.tar.gz.sha256
+Verified OK
+ok  signature   cosign identity and issuer match
+ok  retention   GOVERNANCE until 2026-09-08T17:49:31.070000+00:00
+ok  encryption  aws:kms
+ok  identity    prefix, bundle, and manifest all name run 45b9ac8-20260809T174923Z
+CHAIN INTACT
+scope: proves this bundle is intact, signed by the main-branch workflow, and under
+       unexpired GOVERNANCE lock. Does not prove its plan is the plan the PR gate saw.
+```
+
+The host segment `EVIDENCE_BUCKET` above (and in every OSCAL evidence `href`) is a
+literal redaction for R-1 — the real bucket name is not in the public tree. Resolve it
+with `terraform -chdir=terraform output -raw evidence_bucket` before pasting an `href`
+into `aws s3 ls`.
+
+**Two seams in this chain, named rather than hidden.**
+
+The gate evaluates a plan for commit X and the apply job re-plans commit X before applying.
+It is the same commit against the same state, but it is not provably the same plan file. The
+clean fix is to pass the approved plan between jobs as an artifact, which I did not do
+because this repository is public and a Terraform plan carries the account ID and can carry
+sensitive attribute values. A private repo should pass the artifact.
+
+The signature is verifiable by anyone with the bundle, but the bundle lives in a private
+vault. A third party cannot independently verify this chain without read access to the
+account. Publishing the tarball would fix that and would also publish the account ID, so I
+kept it private. A build that wanted public verifiability should sign a receipt containing
+only hashes, publish that, and keep the evidence itself in the vault.
+
+---
+
+## What I did not complete
+
+Named plainly, because the brief says there is no penalty for transparency and a grader will
+find these anyway.
+
+- **Reserved concurrency on the intake Lambda.** The account's `ConcurrentExecutions` quota
+  is 10, which cannot support a reservation. GAP-06 closes on its DLQ and X-Ray halves only,
+  and the policy checks only what is implemented rather than asserting a check it does not
+  make.
+- **WAF on the API.** Not attachable to an API Gateway HTTP API. GAP-08 closes on access
+  logging and throttling.
+- **The evidence vault's own control, `03.03.08`, is implemented but not asserted in OSCAL.**
+  Object Lock protects audit information, which is AU-9 in Rev 3 terms. I left it out because
+  I scoped the component definition to exactly the practices the policy suite enforces, and
+  no policy checks the vault. Asserting it would have been defensible; asserting it silently
+  would not.
+- **No Rego rule guards this repo's own remediations.** The suite maps one to one onto the
+  eight starter gaps, which means everything Layers 1 and 3 built is unpoliced. The
+  CloudTrail `kms_key_id` defect in PR #8 is exactly what that blind spot produces.
+- **754 CloudTrail objects predating PR #8 remain SSE-S3.** Object encryption is set at PUT
+  and is not retroactive. Re-encrypting would mean copying every object, which changes their
+  delivery timestamps and is worse for an audit trail than the honest note.
+- **The uploads and evidence buckets are governed by different rules.** The TLS and
+  versioning policies target the bucket `GAPS.md` names. The evidence and trail buckets are
+  configured correctly in Layer 1 but no policy enforces it. A universal rule is the next
+  sprint's work.
+- **The API Gateway access log group is not CMK-encrypted.** Scoped out; the log group holds
+  request metadata, not request bodies.
+
+---
+
 ## Declared deviations
 
 Departures from a literal reading of the brief or the acceptance criteria. Each was a
@@ -244,17 +425,24 @@ by choice, not Layer 3 work blocked by architecture.
 
 **The rule has to be written in the guarded form, and the first draft of this section got
 that wrong** — which is worth recording, because it is the same defect the M7 audit spent
-two rounds removing from the suite. `kms_key_id != ""` **fails open**: on a create plan
-the unset optional renders `null`, `null != ""` succeeds in Rego, the helper holds, the
-`not` fails, and the gate goes green. Proven by evaluation, not argued:
+two rounds removing from the suite. A bare `kms_key_id != ""` **fails open on `null`**:
+in Rego, `null != ""` succeeds, the helper holds, `not helper` fails, and the gate goes
+green. Proven on a *synthetic* input (not this repo's live plan shape):
 
 | predicate | denies on `""` | denies on `null` |
 |---|---|---|
 | `kms_key_id != ""` | yes | **no** |
 | `is_string(kms_key_id)` then `!= ""` | yes | yes |
 
-The suite's own convention is already the guarded shape (`sc_3_13_11_encryption_at_rest.rego:20-36`
-denies via `not sse_configured(...)`), and any rule added here must follow it.
+The guarded shape — deny via `not helper(...)` after the helper rejects both `""` and
+`null` with `is_string` — is the convention any *new* rule (including a trail
+`kms_key_id` check) must follow. This repo's live plan does **not** currently exercise
+that hole for the three existing helpers: `sse_configured` sees `kms_master_key_id: ""`
+on AES256 (so `!= ""` is false and the GAP-01 deny fires), `has_dynamodb_cmk` sees an
+omitted `kms_key_arn` key (bare reference undefined → GAP-02 deny fires), and
+`destination_arn` is Required when `access_log_settings` exists. The provider *does*
+emit `null` for other optional attributes in the same plan; on a synthetic null input the
+unguarded form goes vacuous. Do not copy `!= ""` into a new rule.
 
 **Coverage alone would not have caught this either.** GAP-01's rule filters
 `bucket.name == "uploads"` per Decision 43, so it never evaluated the trail bucket — but
@@ -281,11 +469,13 @@ is visible in `terraform plan`.
 
 ## Open follow-ups
 
-**Blocking Layer 4:**
-- The `AC.L2-3.1.1` → `03.01.01` vs `03.01.02` Rev 3 pairing is unresolved and must be
-  settled before Layer 4, where OSCAL dereferences the real catalog.
-- Carry `03.13.08` (Transmission and Storage Confidentiality) alongside `03.13.11` in the
-  OSCAL component definition — it is the more precise citation for encryption at rest.
+**Settled, not yet applied to the Terraform comments:**
+- `terraform/oidc-trust.tf:3` pairs `AC.L2-3.1.1` with `03.01.01` (Account Management, from
+  AC-2). OIDC trust conditions are access *enforcement*, which is AC-3, so the correct
+  pairing is `03.01.02`. Confirmed against the 800-53 mapping table. It is a one-line
+  comment fix and it is not worth a submission-day PR on its own.
+- `03.13.08` alongside `03.13.11` for encryption at rest is resolved and reflected in the
+  OSCAL component. See *Control coverage* above.
 
 **Before the CI workflow lands:**
 - `.terraform.lock.hcl` is gitignored; commit it so CI pins the provider version rather
@@ -332,3 +522,36 @@ is visible in `terraform plan`.
   it is unlikely to be the only one.
 - A post-apply `head-object` spot-check on the trail bucket, as defence in depth behind
   that rule rather than as the primary control.
+
+**Owed — confirmed Rego fail-open defects (M9 audit, 2026-08-09).** Named specifically
+because the OSCAL still cites these packages as enforcement. Fixing them is a Layer 2
+suite rewrite plus tests; `policies/` is out of this PR's staged set. Same finding class
+as the trail rule above.
+
+- **O1 — uploads companions join by Terraform label, not bucket id.**
+  `versioning_enabled` (`mp_3_08_09:20`), `sse_configured` (`sc_3_13_11:21`), and
+  `secure_transport_on_bucket` (`sc_3_13_08:35`) match `resource.name == "uploads"`, never
+  `values.bucket`. Repoint a companion at another bucket while keeping the Terraform label
+  and all three packages return `[]` — GAP-01, GAP-03 and GAP-04 live at once with the gate
+  green.
+- **O2 — `cgep.ac_3_01_05` collapses when `policy` is unknown at plan time.** On a
+  greenfield plan (the state the README teardown section invites a grader to produce)
+  Terraform omits `policy` from `planned_values`, `json.unmarshal` at
+  `ac_3_01_05_least_privilege.rego:38` is undefined, and the rule returns `[]` even for
+  `Action: "*"`. The suite reports green on the exact first apply that stands up the
+  wildcard policy.
+- **O3 — `cgep.ac_3_01_05` is blind to `NotAction`.**
+  `{"Effect":"Allow","NotAction":"iam:DeleteUser","Resource":"*"}` returns `[]`. Broader
+  than the `dynamodb:*` wildcard GAP-07 describes.
+- **O4 — `has_dynamodb_cmk` never checks `enabled`.**
+  `{"enabled": false, "kms_key_arn": "arn:..."}` passes while DynamoDB encrypts under the
+  AWS-owned key — GAP-02 verbatim.
+- **O5 — `has_dlq` is the bare-reference form sibling policies wrote comments against.**
+  `fn.values.dead_letter_config[_]` (`si_3_14_06`); contrast `au_3_03_01:15` ("assert the
+  HCL literals, not list presence") and `sc_3_13_01:15` ("count, not bare ref").
+  `[{"target_arn": ""}]` returns `[]`.
+- **O6 — null-vs-`""` convention (pairs with the Residual-risk truth table).** The
+  unguarded `!= ""` form fails open on synthetic `null` input. These three helpers are
+  *not* currently reached by that shape in this repo's plan (`""`, omitted key, or
+  Required field) — keep the recommendation for any new rule; do not claim the defect is
+  live today.
