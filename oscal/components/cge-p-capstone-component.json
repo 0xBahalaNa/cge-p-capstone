@@ -1,0 +1,341 @@
+{
+  "component-definition": {
+    "uuid": "ac1d38ee-3c9c-44a5-ad19-611bdba6463f",
+    "metadata": {
+      "title": "CGE-P Capstone \u2014 Patient Intake API component definition",
+      "last-modified": "2026-08-09T18:25:26.000000+00:00",
+      "version": "1.0.0",
+      "oscal-version": "1.2.1",
+      "parties": [
+        {
+          "uuid": "f23c9835-fde9-441e-9d87-07582680ba82",
+          "type": "organization",
+          "name": "0xBahalaNa"
+        }
+      ],
+      "roles": [
+        {
+          "id": "provider",
+          "title": "Component provider"
+        }
+      ]
+    },
+    "components": [
+      {
+        "uuid": "2e563d7d-3c35-4ce1-b108-7dcb601a9100",
+        "type": "service",
+        "title": "Patient Intake API",
+        "description": "Governed Patient Intake API: HTTP API Gateway in front of a VPC-attached Lambda that writes intake records to DynamoDB and objects to an S3 uploads bucket. Layer 1 Terraform closes the eight starter gaps; Layer 2 Rego blocks regressions at pull request; Layer 3 signs and vaults the evidence bundle this component links to.",
+        "responsible-roles": [
+          {
+            "role-id": "provider",
+            "party-uuids": [
+              "f23c9835-fde9-441e-9d87-07582680ba82"
+            ]
+          }
+        ],
+        "control-implementations": [
+          {
+            "uuid": "001462f3-e71e-479f-9f24-f22a3167c36d",
+            "source": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-171/rev3/json/NIST_SP800-171_rev3_catalog.json",
+            "description": "NIST SP 800-171 Rev 3 requirements implemented by the Patient Intake API Terraform and, where the suite actually inspects them, enforced by the cgep.* Conftest packages. CMMC Level 2 practice IDs are carried as cmmc-practice props. Exactly eight implemented-requirements \u2014 AU.L2-3.3.1 spans 03.03.01 and 03.03.03. At-rest storage confidentiality is asserted on SP_800_171_03.13.08 alongside its transmission control (shared uploads CMK resources). Evidence link hrefs use the literal host segment EVIDENCE_BUCKET: the real bucket name is withheld per R-1 and resolves via `terraform -chdir=terraform output -raw evidence_bucket`.",
+            "implemented-requirements": [
+              {
+                "uuid": "fc6620e7-8ae4-406d-a513-9cb94268424c",
+                "control-id": "SP_800_171_03.01.05",
+                "description": "Least privilege on the intake Lambda's inline policy (aws_iam_role_policy.lambda_inline): only dynamodb:PutItem on the intake table, s3:PutObject on the uploads object prefix, and sqs:SendMessage on the DLQ. That scoped claim does not extend to the three AWS managed policy attachments on the same role (AWSLambdaBasicExecutionRole, AWSLambdaVPCAccessExecutionRole, AWSXRayDaemonWriteAccess), which grant Resource \"*\" as AWS documents them. cgep.ac_3_01_05 checks Action wildcards only and ignores Resource \u2014 set all three Resource values to \"*\" and the gate stays green \u2014 so resource scoping is Terraform-only, unpoliced.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_iam_role_policy.lambda_inline"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.ac_3_01_05"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "AC.L2-3.1.5"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "df22c0fd-5a91-4b4e-9127-7332809049fe",
+                "control-id": "SP_800_171_03.03.01",
+                "description": "Event selection for the intake path: API Gateway HTTP API access logging to a dedicated CloudWatch log group (request id, source IP, route, status) plus a multi-region CloudTrail that captures management events. WAF is not attached \u2014 HTTP APIs do not support AWS WAF association in this account/API type, so throttling on the stage is the boundary control instead. cgep.au_3_03_01 carries two deny rules and enforces both halves of the API Gateway control, access logging and stage throttling; CloudTrail event selection is Terraform-configured and unpoliced by the suite.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_cloudwatch_log_group.apigw"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_apigatewayv2_stage.default"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_cloudtrail.mgmt"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.au_3_03_01"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "AU.L2-3.3.1"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "f2986034-b8bf-44de-84aa-d1c80681ed1a",
+                "control-id": "SP_800_171_03.03.03",
+                "description": "Audit record generation: CloudTrail writes management-event records to a dedicated trail bucket with enable_log_file_validation set so delivered digests can detect tampering. This is the record-generation half of AU.L2-3.3.1; event selection is asserted under SP_800_171_03.03.01. The cited package cgep.au_3_03_01 only matches aws_apigatewayv2_stage, so it cannot deny a missing or unvalidated CloudTrail; record generation is Terraform-only and unpoliced.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_cloudtrail.mgmt"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket.trail"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.au_3_03_01"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "AU.L2-3.3.1"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "73baaae3-2b9d-4130-8639-11e195f761e3",
+                "control-id": "SP_800_171_03.08.09",
+                "description": "System Backup \u2013 Cryptographic Protection on the uploads bucket: versioning Enabled produces recoverable object copies (prior versions after overwrite or delete), and the bucket CMK (workload customer-managed key via SSE-KMS) protects the confidentiality of those backup copies. Versioning alone would not satisfy this requirement \u2014 both halves are required. cgep.mp_3_08_09 covers the versioning half only (versioning_configuration.status); the CMK half is policed by a different package, cgep.sc_3_13_11, whose GAP-01 deny fires if the uploads bucket leaves SSE-KMS under a customer CMK.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_versioning.uploads"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_server_side_encryption_configuration.uploads"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_kms_key.workload"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.mp_3_08_09"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "MP.L2-3.8.9"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "810c4e19-e380-4cfb-902e-023d85b93db7",
+                "control-id": "SP_800_171_03.13.01",
+                "description": "Boundary protection: the intake Lambda runs with vpc_config in private subnets behind a security group that permits egress only to the S3 and DynamoDB gateway endpoint prefix lists and VPC DNS. Private route table has no internet route; gateway endpoints provide AWS API reachability without NAT. cgep.sc_3_13_01 asserts non-empty vpc_config subnet_ids and security_group_ids lists only; subnet identity, SG egress rules, and route-table content are Terraform-only, unpoliced.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_lambda_function.intake"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_subnet.private[0]"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_subnet.private[1]"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_security_group.lambda"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_route_table.private"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_vpc_endpoint.s3"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_vpc_endpoint.dynamodb"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.sc_3_13_01"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "SC.L2-3.13.1"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "4acabd46-92d0-408e-9101-050f565cf6f2",
+                "control-id": "SP_800_171_03.13.08",
+                "description": "Transmission and storage confidentiality for the uploads bucket: a bucket policy Deny rejects any S3 request where aws:SecureTransport is false, and the same bucket is encrypted at rest under the workload CMK via SSE-KMS. Rev 3 homes both halves here rather than on a related-requirement under 03.13.11. cgep.sc_3_13_08 covers the transmission (SecureTransport) half; the at-rest half is policed by a different package, cgep.sc_3_13_11, whose GAP-01 deny fires if the uploads bucket leaves SSE-KMS under a customer CMK. Both halves are gate-backed.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_policy.uploads"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_server_side_encryption_configuration.uploads"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_kms_key.workload"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.sc_3_13_08"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "SC.L2-3.13.8"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "e7294208-8cac-4c2e-8568-3fddd10d4738",
+                "control-id": "SP_800_171_03.13.11",
+                "description": "Cryptographic protection via two customer-managed KMS keys: the workload CMK (uploads bucket SSE-KMS and DynamoDB table encryption) and the evidence CMK (evidence vault SSE-KMS, trail bucket SSE-KMS, and CloudTrail kms_key_id so log objects are not overridden to AES256). cgep.sc_3_13_11 enforces only the uploads-bucket SSE-KMS rule and DynamoDB CMK encryption \u2014 Decision 43 scopes deny #1 to the uploads label. Evidence-vault SSE-KMS, trail-bucket SSE-KMS, and CloudTrail kms_key_id are Terraform-configured and unpoliced; removing the trail kms_key_id would leave the gate green.",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_kms_key.workload"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_kms_key.evidence"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_cloudtrail.mgmt"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_dynamodb_table.intake"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_server_side_encryption_configuration.uploads"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_server_side_encryption_configuration.evidence"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_server_side_encryption_configuration.trail"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.sc_3_13_11"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "SC.L2-3.13.11"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              },
+              {
+                "uuid": "3269d3e7-469c-4581-9ab4-bd2416781b21",
+                "control-id": "SP_800_171_03.14.06",
+                "description": "System monitoring resources on the intake Lambda: a CMK-encrypted SQS dead-letter queue is attached via dead_letter_config, and Active X-Ray tracing is enabled. Reserved concurrency is not configured \u2014 account quota blocks it. The DLQ does not receive failed intake requests under the current trigger: API Gateway HTTP API AWS_PROXY invokes the function synchronously, and Lambda only delivers to DeadLetterConfig on asynchronous invocation. The queue closes GAP-06 as configured infrastructure; runtime routing of failed POSTs is inert until an async producer exists. cgep.si_3_14_06's has_dlq is the bare-reference form fn.values.dead_letter_config[_] \u2014 it binds on [{}] and on [{\"target_arn\": \"\"}] \u2014 so a non-empty but empty-ARN list keeps the gate green (same limitation named O5 in WRITEUP.md).",
+                "props": [
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_sqs_queue.lambda_dlq"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_lambda_function.intake"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_iam_role_policy_attachment.lambda_xray"
+                  },
+                  {
+                    "name": "rego-package",
+                    "value": "cgep.si_3_14_06"
+                  },
+                  {
+                    "name": "cmmc-practice",
+                    "value": "SI.L2-3.14.6"
+                  }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
+                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
