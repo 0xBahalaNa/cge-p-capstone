@@ -1,0 +1,144 @@
+# Layer 3 — Plan → Policy → Apply → Sign → Upload.
+# Role ARNs and vault bucket come from repository secrets (R-1).
+name: grc-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write # OIDC for AWS STS + Cosign keyless
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  CONFTEST_VERSION: "0.66.0"
+
+jobs:
+  # Job id MUST be `gate` — branch protection status-check context.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (plan role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Install conftest
+        run: |
+          curl -fsSL \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz
+          sudo mv conftest /usr/local/bin/conftest
+          conftest --version
+
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: 1.12.1
+
+      - name: Plan
+        working-directory: terraform
+        run: |
+          terraform init -input=false
+          terraform plan -lock=false -input=false -out=tfplan
+          terraform show -json tfplan > ../tfplan.json
+
+      - name: Policy check
+        shell: bash
+        run: |
+          conftest test --all-namespaces -p policies/ tfplan.json 2>&1 | tee conftest.txt
+          # conftest exits 0 on "0 tests, 0 passed" — a gate that evaluated nothing
+          # is not a gate. Fail unless at least one rule actually ran.
+          grep -qE '[1-9][0-9]* tests,' conftest.txt || { echo "policy gate evaluated 0 rules"; exit 1; }
+          opa test policies/ | tee opa-test.txt
+          # opa test exits 0 and prints nothing when it finds no *_test.rego.
+          grep -qE 'PASS: [1-9]' opa-test.txt || { echo "opa test ran 0 tests"; exit 1; }
+
+  deploy:
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Apply-role credentials ONLY in this job (R-3).
+      - name: Configure AWS (apply role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Install conftest
+        run: |
+          curl -fsSL \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz
+          sudo mv conftest /usr/local/bin/conftest
+
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: 1.12.1
+
+      # Pin the cosign release, not just the action. The signature this writes has
+      # to stay readable by the cosign an auditor runs locally, and the object is
+      # under a 30-day lock so a mismatched bundle format cannot be replaced.
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.2.4
+
+      - name: Apply
+        working-directory: terraform
+        # shell: bash adds -o pipefail; the default `bash -e {0}` does not, so a
+        # failed terraform apply would exit with tee's status and be marked green.
+        shell: bash
+        run: |
+          terraform init -input=false
+          # Re-plan in deploy (Decision 46 — no plan artifact across jobs).
+          terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > ../tfplan.json
+          # Policy check BEFORE apply — the verdict has to bind the plan we apply,
+          # and the plan we apply has to be the one we signed.
+          conftest test --all-namespaces -p ../policies/ ../tfplan.json 2>&1 | tee ../conftest.txt
+          grep -qE '[1-9][0-9]* tests,' ../conftest.txt || { echo "policy gate evaluated 0 rules"; exit 1; }
+          opa test ../policies/ | tee ../opa-test.txt
+          grep -qE 'PASS: [1-9]' ../opa-test.txt || { echo "opa test ran 0 tests"; exit 1; }
+          terraform apply -input=false tfplan 2>&1 | tee ../apply.txt
+
+      - name: Sign
+        env:
+          APPLY_LOG: apply.txt
+        run: |
+          mkdir -p evidence-out
+          BUNDLE=$(scripts/capture-evidence.sh evidence-out)
+          cosign sign-blob --yes \
+            --bundle "evidence-out/${BUNDLE}.tar.gz.cosign.bundle" \
+            "evidence-out/${BUNDLE}.tar.gz"
+          echo "BUNDLE=${BUNDLE}" >> "$GITHUB_ENV"
+
+      - name: Upload
+        env:
+          EVIDENCE_BUCKET: ${{ secrets.EVIDENCE_BUCKET }}
+        run: |
+          SUFFIX="${BUNDLE#evidence-}"
+          PREFIX="runs/${SUFFIX}"
+          aws s3 cp "evidence-out/${BUNDLE}.tar.gz" \
+            "s3://${EVIDENCE_BUCKET}/${PREFIX}/"
+          aws s3 cp "evidence-out/${BUNDLE}.tar.gz.sha256" \
+            "s3://${EVIDENCE_BUCKET}/${PREFIX}/"
+          aws s3 cp "evidence-out/${BUNDLE}.tar.gz.cosign.bundle" \
+            "s3://${EVIDENCE_BUCKET}/${PREFIX}/"
+          echo "Uploaded s3://${EVIDENCE_BUCKET}/${PREFIX}/"
