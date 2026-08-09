@@ -30,7 +30,7 @@ jobs:
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
           PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
           case $((${#PAYLOAD} % 4)) in 2) PAYLOAD="$PAYLOAD==";; 3) PAYLOAD="$PAYLOAD=";; esac
-          echo "$PAYLOAD" | base64 -d | jq '{sub, aud, repository, repository_owner, event_name}'
+          echo "$PAYLOAD" | base64 -d | jq '{sub, aud, event_name, job_workflow_ref, workflow_ref}'
 
       - name: Configure AWS (plan role)
         uses: aws-actions/configure-aws-credentials@v4
