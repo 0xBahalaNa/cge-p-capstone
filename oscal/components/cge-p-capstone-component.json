@@ -38,12 +38,12 @@
           {
             "uuid": "001462f3-e71e-479f-9f24-f22a3167c36d",
             "source": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-171/rev3/json/NIST_SP800-171_rev3_catalog.json",
-            "description": "NIST SP 800-171 Rev 3 requirements implemented by the Patient Intake API Terraform and, where the suite actually inspects them, enforced by the cgep.* Conftest packages. CMMC Level 2 practice IDs are carried as cmmc-practice props. Exactly eight implemented-requirements \u2014 AU.L2-3.3.1 spans 03.03.01 and 03.03.03. At-rest storage confidentiality is asserted on SP_800_171_03.13.08 alongside its transmission control (shared uploads CMK resources). Evidence link hrefs use the literal host segment EVIDENCE_BUCKET: the real bucket name is withheld per R-1 and resolves via `terraform -chdir=terraform output -raw evidence_bucket`.",
+            "description": "NIST SP 800-171 Rev 3 requirements implemented by the Patient Intake API Terraform and, where the suite actually inspects them, enforced by the cgep.* Conftest packages. CMMC Level 2 practice IDs are carried as cmmc-practice props. Exactly eight implemented-requirements \u2014 AU.L2-3.3.1 spans 03.03.01 and 03.03.03. At-rest storage confidentiality is asserted on SP_800_171_03.13.08 alongside its transmission control (shared uploads CMK resources).",
             "implemented-requirements": [
               {
                 "uuid": "fc6620e7-8ae4-406d-a513-9cb94268424c",
                 "control-id": "SP_800_171_03.01.05",
-                "description": "Least privilege on the intake Lambda's inline policy (aws_iam_role_policy.lambda_inline): only dynamodb:PutItem on the intake table, s3:PutObject on the uploads object prefix, and sqs:SendMessage on the DLQ. That scoped claim does not extend to the three AWS managed policy attachments on the same role (AWSLambdaBasicExecutionRole, AWSLambdaVPCAccessExecutionRole, AWSXRayDaemonWriteAccess), which grant Resource \"*\" as AWS documents them. cgep.ac_3_01_05 checks Action wildcards only and ignores Resource \u2014 set all three Resource values to \"*\" and the gate stays green \u2014 so resource scoping is Terraform-only, unpoliced.",
+                "description": "Least privilege on the intake Lambda's inline policy (aws_iam_role_policy.lambda_inline): only dynamodb:PutItem on the intake table, s3:PutObject on the uploads object prefix, and sqs:SendMessage on the DLQ. That scoped claim does not extend to the three AWS managed policy attachments on the same role (AWSLambdaBasicExecutionRole, AWSLambdaVPCAccessExecutionRole, AWSXRayDaemonWriteAccess), which grant Resource \"*\" as AWS documents them. cgep.ac_3_01_05 checks Action wildcards only and ignores Resource \u2014 set all three Resource values to \"*\" and the gate stays green \u2014 so resource scoping is Terraform-only, unpoliced. The package is also blind to `NotAction`, and it returns no denials at all when `policy` is unknown at plan time, which is the state a from-scratch bootstrap plan produces.",
                 "props": [
                   {
                     "name": "terraform-address",
@@ -61,15 +61,15 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
               {
                 "uuid": "df22c0fd-5a91-4b4e-9127-7332809049fe",
                 "control-id": "SP_800_171_03.03.01",
-                "description": "Event selection for the intake path: API Gateway HTTP API access logging to a dedicated CloudWatch log group (request id, source IP, route, status) plus a multi-region CloudTrail that captures management events. WAF is not attached \u2014 HTTP APIs do not support AWS WAF association in this account/API type, so throttling on the stage is the boundary control instead. cgep.au_3_03_01 carries two deny rules and enforces both halves of the API Gateway control, access logging and stage throttling; CloudTrail event selection is Terraform-configured and unpoliced by the suite.",
+                "description": "Event selection for the intake path: API Gateway HTTP API access logging to a dedicated CloudWatch log group (request id, source IP, route, status) plus a multi-region CloudTrail that captures management events. WAF is not attached \u2014 HTTP APIs do not support AWS WAF association in this account/API type, so throttling on the stage is the boundary control instead. cgep.au_3_03_01 carries two deny rules and enforces both halves of the API Gateway control, access logging and stage throttling; CloudTrail event selection is Terraform-configured and unpoliced by the suite. The requirement's second item, reviewing and updating the selected event types on a defined period, is an organizational process and is not implemented in this build.",
                 "props": [
                   {
                     "name": "terraform-address",
@@ -95,15 +95,15 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
               {
                 "uuid": "f2986034-b8bf-44de-84aa-d1c80681ed1a",
                 "control-id": "SP_800_171_03.03.03",
-                "description": "Audit record generation: CloudTrail writes management-event records to a dedicated trail bucket with enable_log_file_validation set so delivered digests can detect tampering. This is the record-generation half of AU.L2-3.3.1; event selection is asserted under SP_800_171_03.03.01. The cited package cgep.au_3_03_01 only matches aws_apigatewayv2_stage, so it cannot deny a missing or unvalidated CloudTrail; record generation is Terraform-only and unpoliced.",
+                "description": "Audit record generation: CloudTrail writes management-event records to a dedicated trail bucket with enable_log_file_validation set so delivered digests can detect tampering. This is the record-generation half of AU.L2-3.3.1; event selection is asserted under SP_800_171_03.03.01. The cited package cgep.au_3_03_01 only matches aws_apigatewayv2_stage, so it cannot deny a missing or unvalidated CloudTrail; record generation is Terraform-only and unpoliced. Retention is the unimplemented half of this requirement. The trail bucket carries `force_destroy = true` with no lifecycle rule and no versioning, so records persist by default rather than by policy. The 30-day GOVERNANCE Object Lock in this build protects the evidence vault, not the trail.",
                 "props": [
                   {
                     "name": "terraform-address",
@@ -125,8 +125,8 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
@@ -159,8 +159,8 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
@@ -209,8 +209,8 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
@@ -243,8 +243,8 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
@@ -293,15 +293,15 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               },
               {
                 "uuid": "3269d3e7-469c-4581-9ab4-bd2416781b21",
                 "control-id": "SP_800_171_03.14.06",
-                "description": "System monitoring resources on the intake Lambda: a CMK-encrypted SQS dead-letter queue is attached via dead_letter_config, and Active X-Ray tracing is enabled. Reserved concurrency is not configured \u2014 account quota blocks it. The DLQ does not receive failed intake requests under the current trigger: API Gateway HTTP API AWS_PROXY invokes the function synchronously, and Lambda only delivers to DeadLetterConfig on asynchronous invocation. The queue closes GAP-06 as configured infrastructure; runtime routing of failed POSTs is inert until an async producer exists. cgep.si_3_14_06's has_dlq is the bare-reference form fn.values.dead_letter_config[_] \u2014 it binds on [{}] and on [{\"target_arn\": \"\"}] \u2014 so a non-empty but empty-ARN list keeps the gate green (same limitation named O5 in WRITEUP.md).",
+                "description": "System monitoring resources on the intake Lambda: a CMK-encrypted SQS dead-letter queue is attached via dead_letter_config, and Active X-Ray tracing is enabled. Reserved concurrency is not configured \u2014 account quota blocks it. The DLQ does not receive failed intake requests under the current trigger: API Gateway HTTP API AWS_PROXY invokes the function synchronously, and Lambda only delivers to DeadLetterConfig on asynchronous invocation. The queue closes GAP-06 as configured infrastructure; runtime routing of failed POSTs is inert until an async producer exists. cgep.si_3_14_06's has_dlq is the bare-reference form fn.values.dead_letter_config[_] \u2014 it binds on [{}] and on [{\"target_arn\": \"\"}] \u2014 so a non-empty but empty-ARN list keeps the gate green (same limitation named O5 in WRITEUP.md). The Rev 3 statement is about detecting attacks and monitoring inbound and outbound traffic; the DLQ and X-Ray are telemetry substrate rather than detection. The operative monitoring evidence here is the API Gateway access log, the Lambda `Errors` metric, and the X-Ray trace.",
                 "props": [
                   {
                     "name": "terraform-address",
@@ -327,8 +327,8 @@
                 "links": [
                   {
                     "rel": "evidence",
-                    "href": "s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz",
-                    "text": "Signed evidence bundle for run 45b9ac8-20260809T174923Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
+                    "href": "s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz",
+                    "text": "Signed evidence bundle for run 1381094-20260809T220058Z \u2014 SHA-256, Cosign keyless, 30-day GOVERNANCE lock."
                   }
                 ]
               }
