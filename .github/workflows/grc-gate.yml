@@ -22,16 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TEMPORARY — remove once OIDC is green. Prints the sub/aud claims only,
-      # never the token, so the IAM trust condition can be matched to reality.
-      - name: DEBUG oidc claims
-        run: |
-          TOKEN=$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
-          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
-          case $((${#PAYLOAD} % 4)) in 2) PAYLOAD="$PAYLOAD==";; 3) PAYLOAD="$PAYLOAD=";; esac
-          echo "$PAYLOAD" | base64 -d | jq '{sub, aud, event_name, job_workflow_ref, workflow_ref}'
-
       - name: Configure AWS (plan role)
         uses: aws-actions/configure-aws-credentials@v4
         with:
