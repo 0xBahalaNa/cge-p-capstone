@@ -45,12 +45,10 @@ cd .. && conftest test --all-namespaces -p policies/ tfplan.json
 
 # Layer 3 — the evidence chain
 export EVIDENCE_BUCKET=$(terraform -chdir=terraform output -raw evidence_bucket)
-scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/
+scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/1381094-20260809T220058Z/
 ```
 
-OSCAL evidence `href`s use the literal host `EVIDENCE_BUCKET` (R-1 — the real name is
-not in the public tree). Resolve it with the `export` line above before pasting an `href`
-into `aws s3 ls`.
+OSCAL evidence `href`s name this bucket directly, so an `href` pastes into `aws s3 ls` unchanged.
 
 `--all-namespaces` is not optional. The packages are `cgep.*` and Conftest defaults to `main`,
 so omitting the flag exits 0 with `0 tests, 0 passed`. That is a vacuous green, and it is the
@@ -173,9 +171,8 @@ make destroy AWS_PROFILE=<your-profile>
 ```
 
 The CloudTrail bucket has `force_destroy = true` and needs no bypass. Terraform state lives in
-a bucket created out of band and is not managed by this stack, so it survives `destroy` and
-must be removed by hand. Its name is withheld from the public tree under the same rule as the
-evidence bucket, so the bootstrap commands are not reproduced here.
+`cge-p-capstone-tfstate-08072026-2056`, a bucket created out of band and not managed by this
+stack, so it survives `destroy` and must be emptied and deleted by hand.
 
 ## License
 

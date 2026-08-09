@@ -6,7 +6,12 @@ that resolves to a numbered, machine-readable control catalog, which is what Lay
 to dereference honestly. Its practices map cleanly onto the eight gaps the starter names,
 so the policy suite enforces real requirements rather than generic hygiene checks. And it
 is the framework closest to the federal and public-safety work I do, so I can defend the
-control interpretations rather than reciting them.
+control interpretations rather than reciting them. HIPAA is the obvious primary for a
+telehealth intake path, but the starter's own gap list undercuts that choice: GAP-06 cites
+SOC 2 and CMMC only, with no HIPAA mapping at all, so HIPAA covers seven of the eight named
+flaws while CMMC covers all eight. The scenario also puts a federal pilot on Acme's table as
+one of the three flags it is pursuing at once, which makes CMMC a stated business driver
+inside the brief rather than an outside preference.
 
 The rest of this file is the record of *why* this capstone is shaped the way it is: the
 trade-offs taken, the places it deliberately departs from the brief, the risk it does not
@@ -15,11 +20,6 @@ close, and the work still owed.
 GitHub Issues are disabled on this repo, so this file — not an issue tracker — is where
 deferred work and accepted risk live. Every entry below was a decision made during
 Layers 1–2 (PRs #1–#7).
-
-> **Review status:** consolidated from the PR bodies of #1–#7. The reasoning is accurate
-> to what was built, but the wording is drafted, not yet rewritten in my own words. Do a
-> defense pass over the *Why it is built this way* section before this is put in front of
-> an assessor.
 
 ---
 
@@ -233,8 +233,8 @@ answer on a vault the account can delete. This matters for Layer 4: the brief is
 ## Pipeline evidence flow, traced end to end
 
 One real run, followed from commit to verifiable artifact. Run
-[`31327365987`](https://github.com/0xBahalaNa/cge-p-capstone/actions/runs/31327365987), commit
-`45b9ac8`.
+[`31338257391`](https://github.com/0xBahalaNa/cge-p-capstone/actions/runs/31338257391), commit
+`1381094`.
 
 1. **Plan.** The `gate` job assumes the read-only OIDC role and runs
    `terraform plan -lock=false`, then renders it with `terraform show -json`. The plan runs
@@ -253,29 +253,32 @@ One real run, followed from commit to verifiable artifact. Run
    GitHub OIDC token. No key material exists to be stolen, and the certificate binds the
    signature to this repository's workflow at a specific ref.
 5. **Upload.** The tarball, its SHA-256 and the Cosign bundle land at
-   `s3://$EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/` under the evidence CMK, inheriting the vault's
+   `s3://$EVIDENCE_BUCKET/runs/1381094-20260809T220058Z/` under the evidence CMK, inheriting the vault's
    30-day GOVERNANCE retention.
 
 Verification, run from a clean shell:
 
 ```console
-$ scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/
-Verifying evidence-45b9ac8-20260809T174923Z.tar.gz from s3://EVIDENCE_BUCKET/runs/45b9ac8-20260809T174923Z/evidence-45b9ac8-20260809T174923Z.tar.gz
-ok  integrity   SHA-256 matches evidence-45b9ac8-20260809T174923Z.tar.gz.sha256
+$ scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/1381094-20260809T220058Z/
+Verifying evidence-1381094-20260809T220058Z.tar.gz from s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz
+ok  integrity   SHA-256 matches evidence-1381094-20260809T220058Z.tar.gz.sha256
 Verified OK
 ok  signature   cosign identity and issuer match
-ok  retention   GOVERNANCE until 2026-09-08T17:49:31.070000+00:00
+ok  retention   GOVERNANCE until 2026-09-08T22:01:10.287000+00:00
 ok  encryption  aws:kms
-ok  identity    prefix, bundle, and manifest all name run 45b9ac8-20260809T174923Z
+ok  identity    prefix, bundle, and manifest all name run 1381094-20260809T220058Z
 CHAIN INTACT
 scope: proves this bundle is intact, signed by the main-branch workflow, and under
        unexpired GOVERNANCE lock. Does not prove its plan is the plan the PR gate saw.
 ```
 
-The host segment `EVIDENCE_BUCKET` above (and in every OSCAL evidence `href`) is a
-literal redaction for R-1 — the real bucket name is not in the public tree. Resolve it
-with `terraform -chdir=terraform output -raw evidence_bucket` before pasting an `href`
-into `aws s3 ls`.
+An evidence link committed to a repository can never name the bundle of its own commit. Writing
+the link changes the commit, and the next merge produces a different bundle. The resting position
+is a one-commit lag: the run cited above is the merge immediately before this one, and this commit
+touches only Markdown and JSON, so it cannot have changed the plan the bundle contains. I compared
+the two most recent bundles to check that claim rather than assert it. Their `conftest.txt`,
+`opa-test.txt` and `apply.txt` are byte-identical, and their `tfplan.json` files differ in exactly
+one field, the top-level `timestamp`.
 
 **Two seams in this chain, named rather than hidden.**
 
