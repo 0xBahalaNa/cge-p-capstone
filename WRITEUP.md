@@ -204,6 +204,25 @@ not the version that introduced `use_lockfile`. Terraform refuses to read state 
 a newer binary, so a lower floor does not create a working path — it relocates the failure
 from a clear error at `init` to a confusing one at `plan`.
 
+### Detection layer
+
+**Two metric filters on CloudTrail management events, not a CIS-14 set.**
+`unauthorized_api` watches for AccessDenied / UnauthorizedOperation error codes;
+`root_usage` watches for `userIdentity.type = Root`. Those two map to controls this
+build already claims (03.14.06 and 03.01.05) and are detectable from the only event
+class the trail captures. A larger filter set would pad the Continuous Monitoring
+dimension without adding a control claim the OSCAL can defend.
+
+**Alert routing stops at an unsubscribed SNS topic.** Alarms publish to
+`aws_sns_topic.security_alerts`; no `aws_sns_topic_subscription` exists in Terraform.
+The route is defined and testable with `aws sns publish`; the last hop would put an
+email address in a public repo. Subscription is an out-of-band operator step.
+
+**The nightly drift job fails loud.** The `drift` job runs `terraform plan
+-detailed-exitcode` with no `continue-on-error`. Exit code 2 means the live account
+diverged from the repo, and a red scheduled run *is* the detection. A drift check that
+cannot fail is a cosmetic CI step.
+
 ### Policy gate
 
 **`--all-namespaces` is mandatory.** The packages are `cgep.*`, and Conftest defaults to
@@ -353,6 +372,16 @@ decision, not an oversight.
    and no `SC.L2-3.13.*` is claimed for the state bucket's encryption. The control claimed
    should be the one the code implements.
 
+6. **No Terraform modules (Decision 63).** The layout stays flat eight `.tf` files. The
+   IaC Quality 90–100 band asks for "clean modules & state"; modularising a working
+   baseline on submission day trades a small band gain for a real chance of breaking an
+   apply that is currently green. Declared here and in the README known-limits section.
+
+7. **`gha_apply` stays broad with documented checkov skips (Decision 61, amending 39).**
+   The role gains `sns:*` and `cloudwatch:*` for M11 detection resources, and seven
+   checkov skip comments name Decision 39 rather than silencing the findings. Narrowing
+   the action set on submission day risks a failed merge apply with no recovery window.
+
 ---
 
 ## Residual risk and known limits
@@ -362,7 +391,14 @@ attach `AdministratorAccess` to itself. Accepted trade-off: assuming the role re
 token minted from `refs/heads/main`, push access to which is held only by the repo owner,
 who is already account admin — so the escalation grants nothing to anyone who lacks it.
 Narrowing it to the exact action set the stack needs is deferred until the workflow exists
-and that set is known.
+and that set is known. The M11 checkov skips document that choice; they do not shrink it.
+
+**Two detections are not coverage.** Unauthorized-API and root-usage alarms assert two
+targeted signals from management events. They do not watch data-plane abuse, Config
+drift rules, GuardDuty findings, or the other CIS filter patterns. An unsubscribed SNS
+topic alerts nobody until an operator runs `aws sns subscribe`. A nightly
+`terraform plan -detailed-exitcode` is not real-time detection — a hand-change in the
+console can sit until 08:00 UTC before the badge turns red.
 
 **`terraform plan` in CI must run with `-lock=false`.** `ReadOnlyAccess` carries no
 `s3:PutObject`, so the plan role cannot write the `.tflock` object. This is a locked

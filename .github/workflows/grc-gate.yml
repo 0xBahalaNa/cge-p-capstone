@@ -6,6 +6,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 8 * * *" # 08:00 UTC daily — drift check against the live account
 
 permissions:
   id-token: write # OIDC for AWS STS + Cosign keyless
@@ -18,6 +20,7 @@ env:
 jobs:
   # Job id MUST be `gate` — branch protection status-check context.
   gate:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,3 +145,29 @@ jobs:
           aws s3 cp "evidence-out/${BUNDLE}.tar.gz.cosign.bundle" \
             "s3://${EVIDENCE_BUCKET}/${PREFIX}/"
           echo "Uploaded s3://${EVIDENCE_BUCKET}/${PREFIX}/"
+
+  # Nightly drift detection (Decision 62) — fails loud on any plan delta.
+  drift:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (plan role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Drift check
+        working-directory: terraform
+        run: |
+          terraform init -input=false
+          # Exit 2 from -detailed-exitcode means drift. No continue-on-error:
+          # a red scheduled run *is* the detection.
+          terraform plan -lock=false -detailed-exitcode -input=false

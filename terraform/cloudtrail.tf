@@ -89,5 +89,39 @@ resource "aws_cloudtrail" "mgmt" {
   # config still reads `aws:kms`. Verified against the live account 2026-08-08.
   kms_key_id = aws_kms_key.evidence.arn
 
+  # Deliver management events to CloudWatch Logs for metric filters (M11a).
+  # The :* suffix on the group ARN is required by the CloudTrail API.
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.trail.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_cw.arn
+
   depends_on = [aws_s3_bucket_policy.trail]
+}
+
+# Trail-bucket retention (M11d / Decision 60) — versioning + 365-day lifecycle.
+# force_destroy remains true; an operator can still delete the bucket.
+resource "aws_s3_bucket_versioning" "trail" {
+  bucket = aws_s3_bucket.trail.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "trail" {
+  bucket = aws_s3_bucket.trail.id
+
+  rule {
+    id     = "retain-365"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 365
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 365
+    }
+  }
 }

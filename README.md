@@ -23,6 +23,10 @@ The application code is unchanged from
 # Layer 2 — policy unit tests (39 tests, 7 policies)
 opa test policies/
 
+# Tier 0 — IaC static analysis (same tools the rubric grades)
+terraform fmt -check -recursive
+checkov -d terraform/    # exits 1: 20 known findings, all in Known limits below
+
 # Layer 4 — OSCAL schema validation (trestle only validates inside a workspace)
 W=$(mktemp -d) && (cd "$W" && trestle init --local >/dev/null)
 mkdir -p "$W/component-definitions/cge-p-capstone" "$W/profiles/cge-p-minimum"
@@ -42,6 +46,13 @@ cd terraform && terraform init && terraform plan     # expect: No changes
 # Layer 2 — the suite against a real plan (NOT the fixtures)
 terraform plan -out=tfplan && terraform show -json tfplan > ../tfplan.json
 cd .. && conftest test --all-namespaces -p policies/ tfplan.json
+
+# Detection — two CloudWatch alarms route to an SNS topic (no subscription in Terraform)
+aws cloudwatch describe-alarms --alarm-name-prefix acme-health-intake --query 'MetricAlarms[].AlarmName'
+# Wire a real endpoint out of band — subscription is deliberately not in this stack:
+# aws sns subscribe --topic-arn <security_alerts_topic_arn> --protocol email --notification-endpoint you@example.com
+# Prove the route end to end (subscribe first, or watch the topic's NumberOfMessagesPublished metric):
+# aws sns publish --topic-arn <security_alerts_topic_arn> --subject "route test" --message "route test"
 
 # Layer 3 — the evidence chain
 export EVIDENCE_BUCKET=$(terraform -chdir=terraform output -raw evidence_bucket)
@@ -77,17 +88,20 @@ demonstration still stands.
 **Layer 1 — Terraform GRC baseline.** Two customer-managed KMS keys with rotation, split by
 trust boundary: one for the workload, one for evidence. An S3 evidence vault under Object Lock
 (GOVERNANCE, 30 days) and versioning. A multi-region CloudTrail with log file validation,
-writing to a dedicated bucket under the evidence CMK. Hardening overrides that close six of
-eight starter gaps fully, and two in part (GAP-06 reserved concurrency, GAP-08 WAF).
+writing to a dedicated bucket under the evidence CMK and delivering to CloudWatch Logs for
+two targeted metric-filter alarms (unauthorized API, root usage) plus VPC flow logs.
+Hardening overrides that close six of eight starter gaps fully, and two in part (GAP-06
+reserved concurrency, GAP-08 WAF).
 
 **Layer 2 — OPA policy suite.** Seven Rego policies, ten deny rules, 39 unit tests. Each
 policy carries a metadata block naming the framework, control IDs, severity and remediation,
 and each deny message cites its CMMC practice so a developer sees the control, not just a
 failure. The policies read `terraform show -json` planned values rather than parsing HCL.
 
-**Layer 3 — GitHub Actions pipeline.** One workflow, five sequential steps: plan, policy
-check, apply on merge to `main`, Cosign keyless signature via GitHub OIDC, upload to the
-evidence vault. A pull request run never receives apply-role credentials.
+**Layer 3 — GitHub Actions pipeline.** One workflow: plan, policy check, apply on merge to
+`main`, Cosign keyless signature via GitHub OIDC, upload to the evidence vault, plus a
+nightly scheduled drift job that fails loud on any plan delta. A pull request run never
+receives apply-role credentials.
 
 **Layer 4 — OSCAL component definition.** Eight implemented requirements against the NIST SP
 800-171 Rev 3 catalog, each citing the real Terraform addresses that implement it, the Rego
@@ -133,6 +147,7 @@ cge-p-capstone/
 │   ├── kms.tf                  workload CMK and evidence CMK, rotation on
 │   ├── evidence-vault.tf       Object Lock vault (GOVERNANCE, 30 days)
 │   ├── cloudtrail.tf           multi-region trail, log file validation
+│   ├── detection.tf            metric filters, alarms, SNS topic, VPC flow logs
 │   ├── hardening.tf            gap-closing overrides on starter resources
 │   └── oidc-trust.tf           GitHub OIDC: read-only plan role, main-only apply role
 ├── policies/                   7 Rego policies + 7 test files
@@ -151,6 +166,21 @@ cge-p-capstone/
 ```
 
 ---
+
+## Known limits
+
+- **No Terraform modules.** Flat `.tf` layout is deliberate (Decision 63). Modularising a
+  working baseline on submission day is out of scope.
+- **20 checkov findings left open** by category (regenerated from `checkov -d terraform/`):
+  cross-region replication on all three buckets; S3 event notifications on all three;
+  S3 access logging on all three; missing lifecycle on evidence and uploads; abort-
+  incomplete-upload period on the trail lifecycle M11d added; Lambda code signing;
+  Lambda env-var encryption; Lambda reserved concurrency (see Gap coverage GAP-06);
+  CloudTrail SNS topic beyond the M11a alarm topic; default-SG restriction; public
+  subnets assign a public IP by default; and authorization on the public-by-design
+  intake HTTP API route.
+- **`gha_apply` stays broad.** It carries documented checkov skips for Decision 39
+  (main-branch OIDC only) rather than a narrowed action set.
 
 ## Teardown
 

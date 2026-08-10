@@ -60,6 +60,15 @@ resource "aws_s3_bucket_versioning" "uploads" {
   }
 }
 
+# Public access block on the PHI uploads bucket (M11b) — matches trail.
+resource "aws_s3_bucket_public_access_block" "uploads" {
+  bucket                  = aws_s3_bucket.uploads.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 # GAP-05: private route table — no internet route; endpoints inject prefix lists.
 # SC.L2-3.13.1 · NIST SP 800-171 Rev 3: 03.13.01
 resource "aws_route_table" "private" {
@@ -163,5 +172,6 @@ resource "aws_iam_role_policy_attachment" "lambda_xray" {
 # AU.L2-3.3.1 · NIST SP 800-171 Rev 3: 03.03.01
 resource "aws_cloudwatch_log_group" "apigw" {
   name              = "/aws/apigateway/${local.name_prefix}-${local.suffix}"
-  retention_in_days = 30
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.evidence.arn
 }

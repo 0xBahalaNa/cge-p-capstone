@@ -85,6 +85,37 @@ resource "aws_kms_key" "evidence" {
         Principal = { Service = "cloudtrail.amazonaws.com" }
         Action    = "kms:Decrypt"
         Resource  = "*"
+      },
+      {
+        # CloudWatch Logs delivery into CMK-encrypted log groups (M11a).
+        # Without this statement the log group create fails at apply time.
+        Sid       = "Allow CloudWatch Logs to use the key"
+        Effect    = "Allow"
+        Principal = { Service = "logs.${var.aws_region}.amazonaws.com" }
+        Action = [
+          "kms:Encrypt*",
+          "kms:Decrypt*",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:Describe*",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:*"
+          }
+        }
+      },
+      {
+        # CloudWatch Alarms publish to a CMK-encrypted SNS topic (M11a).
+        Sid       = "Allow CloudWatch Alarms to use the key"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action = [
+          "kms:GenerateDataKey*",
+          "kms:Decrypt",
+        ]
+        Resource = "*"
       }
     ]
   })
