@@ -252,8 +252,15 @@ answer on a vault the account can delete. This matters for Layer 4: the brief is
 ## Pipeline evidence flow, traced end to end
 
 One real run, followed from commit to verifiable artifact. Run
-[`31338257391`](https://github.com/0xBahalaNa/cge-p-capstone/actions/runs/31338257391), commit
-`1381094`.
+[`31345660086`](https://github.com/0xBahalaNa/cge-p-capstone/actions/runs/31345660086), commit
+`5af88e1`.
+
+This run's apply failed on its first attempt. The stack adds `sns:*` to the apply role and
+creates the SNS topic in the same `terraform apply`, so the already-assumed session did not
+carry the grant it had just written, and `SNS:CreateTopic` returned `AuthorizationError`. The
+grant itself persisted, so a re-run assumed a fresh session and completed. The fix is to land
+permission changes in an apply ahead of the resources that consume them, which I have not
+done. Steps 1 through 5 describe the successful attempt.
 
 1. **Plan.** The `gate` job assumes the read-only OIDC role and runs
    `terraform plan -lock=false`, then renders it with `terraform show -json`. The plan runs
@@ -272,20 +279,20 @@ One real run, followed from commit to verifiable artifact. Run
    GitHub OIDC token. No key material exists to be stolen, and the certificate binds the
    signature to this repository's workflow at a specific ref.
 5. **Upload.** The tarball, its SHA-256 and the Cosign bundle land at
-   `s3://$EVIDENCE_BUCKET/runs/1381094-20260809T220058Z/` under the evidence CMK, inheriting the vault's
+   `s3://$EVIDENCE_BUCKET/runs/5af88e1-20260810T010058Z/` under the evidence CMK, inheriting the vault's
    30-day GOVERNANCE retention.
 
 Verification, run from a clean shell:
 
 ```console
-$ scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/1381094-20260809T220058Z/
-Verifying evidence-1381094-20260809T220058Z.tar.gz from s3://acme-health-intake-evidence-cb45156c/runs/1381094-20260809T220058Z/evidence-1381094-20260809T220058Z.tar.gz
-ok  integrity   SHA-256 matches evidence-1381094-20260809T220058Z.tar.gz.sha256
+$ scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/5af88e1-20260810T010058Z/
+Verifying evidence-5af88e1-20260810T010058Z.tar.gz from s3://acme-health-intake-evidence-cb45156c/runs/5af88e1-20260810T010058Z/evidence-5af88e1-20260810T010058Z.tar.gz
+ok  integrity   SHA-256 matches evidence-5af88e1-20260810T010058Z.tar.gz.sha256
 Verified OK
 ok  signature   cosign identity and issuer match
-ok  retention   GOVERNANCE until 2026-09-08T22:01:10.287000+00:00
+ok  retention   GOVERNANCE until 2026-09-09T01:01:05.830000+00:00
 ok  encryption  aws:kms
-ok  identity    prefix, bundle, and manifest all name run 1381094-20260809T220058Z
+ok  identity    prefix, bundle, and manifest all name run 5af88e1-20260810T010058Z
 CHAIN INTACT
 scope: proves this bundle is intact, signed by the main-branch workflow, and under
        unexpired GOVERNANCE lock. Does not prove its plan is the plan the PR gate saw.
@@ -294,10 +301,11 @@ scope: proves this bundle is intact, signed by the main-branch workflow, and und
 An evidence link committed to a repository can never name the bundle of its own commit. Writing
 the link changes the commit, and the next merge produces a different bundle. The resting position
 is a one-commit lag: the run cited above is the merge immediately before this one, and this commit
-touches only Markdown and JSON, so it cannot have changed the plan the bundle contains. I compared
-the two most recent bundles to check that claim rather than assert it. Their `conftest.txt`,
-`opa-test.txt` and `apply.txt` are byte-identical, and their `tfplan.json` files differ in exactly
-one field, the top-level `timestamp`.
+touches only Markdown and JSON, so it cannot have changed the plan the bundle contains. I checked
+that claim rather than asserting it, on the last pair of merges where a documentation-only commit
+followed a code one. The bundles for `1381094` and the Markdown-only merge after it have
+byte-identical `conftest.txt`, `opa-test.txt` and `apply.txt`, and their `tfplan.json` files differ
+in exactly one field, the top-level `timestamp`.
 
 **Two seams in this chain, named rather than hidden.**
 
