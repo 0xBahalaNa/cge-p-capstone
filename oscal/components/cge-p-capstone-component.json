@@ -103,7 +103,7 @@
               {
                 "uuid": "f2986034-b8bf-44de-84aa-d1c80681ed1a",
                 "control-id": "SP_800_171_03.03.03",
-                "description": "Audit record generation: CloudTrail writes management-event records to a dedicated trail bucket with enable_log_file_validation set so delivered digests can detect tampering. This is the record-generation half of AU.L2-3.3.1; event selection is asserted under SP_800_171_03.03.01. The cited package cgep.au_3_03_01 only matches aws_apigatewayv2_stage, so it cannot deny a missing or unvalidated CloudTrail; record generation is Terraform-only and unpoliced. Retention is the unimplemented half of this requirement. The trail bucket carries `force_destroy = true` with no lifecycle rule and no versioning, so records persist by default rather than by policy. The 30-day GOVERNANCE Object Lock in this build protects the evidence vault, not the trail.",
+                "description": "Audit record generation: CloudTrail writes management-event records to a dedicated trail bucket with enable_log_file_validation set so delivered digests can detect tampering. This is the record-generation half of AU.L2-3.3.1; event selection is asserted under SP_800_171_03.03.01. The cited package cgep.au_3_03_01 only matches aws_apigatewayv2_stage, so it cannot deny a missing or unvalidated CloudTrail; record generation is Terraform-only and unpoliced. Retention is implemented as versioning plus a 365-day lifecycle rule on aws_s3_bucket_lifecycle_configuration.trail (noncurrent versions expire at 365 days too). The trail bucket still carries `force_destroy = true`, so an operator can delete the records despite the retention policy. The 30-day GOVERNANCE Object Lock in this build protects the evidence vault, not the trail — vault immutability and trail lifecycle are different controls.",
                 "props": [
                   {
                     "name": "terraform-address",
@@ -112,6 +112,14 @@
                   {
                     "name": "terraform-address",
                     "value": "aws_s3_bucket.trail"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_versioning.trail"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_s3_bucket_lifecycle_configuration.trail"
                   },
                   {
                     "name": "rego-package",
@@ -301,7 +309,7 @@
               {
                 "uuid": "3269d3e7-469c-4581-9ab4-bd2416781b21",
                 "control-id": "SP_800_171_03.14.06",
-                "description": "System monitoring resources on the intake Lambda: a CMK-encrypted SQS dead-letter queue is attached via dead_letter_config, and Active X-Ray tracing is enabled. Reserved concurrency is not configured \u2014 account quota blocks it. The DLQ does not receive failed intake requests under the current trigger: API Gateway HTTP API AWS_PROXY invokes the function synchronously, and Lambda only delivers to DeadLetterConfig on asynchronous invocation. The queue closes GAP-06 as configured infrastructure; runtime routing of failed POSTs is inert until an async producer exists. cgep.si_3_14_06's has_dlq is the bare-reference form fn.values.dead_letter_config[_] \u2014 it binds on [{}] and on [{\"target_arn\": \"\"}] \u2014 so a non-empty but empty-ARN list keeps the gate green (same limitation named O5 in WRITEUP.md). The Rev 3 statement is about detecting attacks and monitoring inbound and outbound traffic; the DLQ and X-Ray are telemetry substrate rather than detection. The operative monitoring evidence here is the API Gateway access log, the Lambda `Errors` metric, and the X-Ray trace.",
+                "description": "System monitoring resources on the intake Lambda: a CMK-encrypted SQS dead-letter queue is attached via dead_letter_config, and Active X-Ray tracing is enabled. Reserved concurrency is not configured \u2014 account quota blocks it. The DLQ does not receive failed intake requests under the current trigger: API Gateway HTTP API AWS_PROXY invokes the function synchronously, and Lambda only delivers to DeadLetterConfig on asynchronous invocation. The queue closes GAP-06 as configured infrastructure; runtime routing of failed POSTs is inert until an async producer exists. cgep.si_3_14_06's has_dlq is the bare-reference form fn.values.dead_letter_config[_] \u2014 it binds on [{}] and on [{\"target_arn\": \"\"}] \u2014 so a non-empty but empty-ARN list keeps the gate green (same limitation named O5 in WRITEUP.md). The Rev 3 statement is about detecting attacks and monitoring inbound and outbound traffic; the DLQ and X-Ray remain telemetry substrate, and two targeted detections now sit beside them: aws_cloudwatch_metric_alarm.unauthorized_api (AccessDenied / UnauthorizedOperation on management events) and aws_cloudwatch_metric_alarm.root_usage (Root userIdentity), both fed from CloudTrail delivery into a CloudWatch log group, plus aws_flow_log.main on the VPC for network visibility. Alarm actions publish to aws_sns_topic.security_alerts; the topic has no subscription resource in Terraform \u2014 delivery endpoints are configured out of band. Two metric filters are not comprehensive detection coverage; they are the controls this trail's management-event class can honestly assert.",
                 "props": [
                   {
                     "name": "terraform-address",
@@ -314,6 +322,22 @@
                   {
                     "name": "terraform-address",
                     "value": "aws_iam_role_policy_attachment.lambda_xray"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_cloudwatch_metric_alarm.unauthorized_api"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_cloudwatch_metric_alarm.root_usage"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_flow_log.main"
+                  },
+                  {
+                    "name": "terraform-address",
+                    "value": "aws_sns_topic.security_alerts"
                   },
                   {
                     "name": "rego-package",

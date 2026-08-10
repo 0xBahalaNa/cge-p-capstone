@@ -71,10 +71,21 @@ resource "aws_iam_role" "gha_apply" {
   })
 }
 
+#tfsec:ignore:AVD-AWS-0057 # Decision 39 — accepted control-plane risk, main-branch OIDC only
 resource "aws_iam_role_policy" "gha_apply" {
   name = "gha-apply-stack"
   role = aws_iam_role.gha_apply.id
 
+  # Decision 39 — the OIDC apply role is deliberately broad. It is assumable only from
+  # refs/heads/main via GitHub OIDC, it exists to apply this stack, and narrowing it is
+  # tracked as accepted control-plane risk in WRITEUP.md. Documented, not silenced.
+  #checkov:skip=CKV_AWS_286:Decision 39 — accepted control-plane risk, main-branch OIDC only
+  #checkov:skip=CKV_AWS_287:Decision 39 — accepted control-plane risk, main-branch OIDC only
+  #checkov:skip=CKV_AWS_288:Decision 39 — accepted control-plane risk, main-branch OIDC only
+  #checkov:skip=CKV_AWS_289:Decision 39 — accepted control-plane risk, main-branch OIDC only
+  #checkov:skip=CKV_AWS_290:Decision 39 — accepted control-plane risk, main-branch OIDC only
+  #checkov:skip=CKV_AWS_355:Decision 39 — accepted control-plane risk, main-branch OIDC only
+  #checkov:skip=CKV2_AWS_40:Decision 39 — accepted control-plane risk, main-branch OIDC only
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -89,7 +100,9 @@ resource "aws_iam_role_policy" "gha_apply" {
         "cloudtrail:*",
         "logs:*",
         "iam:*",
-        "sqs:*"
+        "sqs:*",
+        "sns:*",
+        "cloudwatch:*"
       ]
       Resource = "*"
     }]
