@@ -56,7 +56,7 @@ aws cloudwatch describe-alarms --alarm-name-prefix acme-health-intake --query 'M
 
 # Layer 3 — the evidence chain
 export EVIDENCE_BUCKET=$(terraform -chdir=terraform output -raw evidence_bucket)
-scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/1381094-20260809T220058Z/
+scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/5af88e1-20260810T010058Z/
 ```
 
 OSCAL evidence `href`s name this bucket directly, so an `href` pastes into `aws s3 ls` unchanged.
