@@ -206,4 +206,4 @@ stack, so it survives `destroy` and must be emptied and deleted by hand.
 
 ## License
 
-MIT, inherited from the starter.
+MIT, inherited from the starter. Full text in [LICENSE](LICENSE).
