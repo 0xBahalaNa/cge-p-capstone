@@ -1,4 +1,4 @@
-# Capstone Writeup — decisions, deviations, and residual risk
+# Capstone Writeup: decisions, deviations, and residual risk
 
 **The primary framework for this capstone is CMMC Level 2, mapped to NIST SP 800-171
 Rev 3.** I chose it over HIPAA and SOC 2 for three reasons. It is the only one of the three
@@ -17,7 +17,7 @@ The rest of this file is the record of *why* this capstone is shaped the way it 
 trade-offs taken, the places it deliberately departs from the brief, the risk it does not
 close, and the work still owed.
 
-GitHub Issues are disabled on this repo, so this file — not an issue tracker — is where
+GitHub Issues are disabled on this repo, so this file, not an issue tracker, is where
 deferred work and accepted risk live. Every entry below was a decision made during
 Layers 1–2 (PRs #1–#7).
 
@@ -25,7 +25,7 @@ Layers 1–2 (PRs #1–#7).
 
 ## Control coverage
 
-Eight gaps, all eight addressed in Terraform, all eight policed by Rego — seven policies
+Eight gaps, all eight addressed in Terraform, all eight policed by Rego, seven policies
 covering eight gaps (GAP-01 and GAP-02 share `cgep.sc_3_13_11`).
 
 | Gap | Remediated in | Enforced by | CMMC L2 | 800-171 r3 |
@@ -53,7 +53,7 @@ the artifact where the catalog is actually dereferenced.
 **SC.L2-3.13.11 is the cryptographic mechanism, not the at-rest property.** `03.13.11`
 maps from SC-13. Protection of information at rest is SC-28. The usfed-compliance
 crosswalk returns `03.08.05` for SC-28, but the NIST SP 800-171 Rev 3 catalog this
-component declares as its `source` titles `03.08.05` *Media Transport* — nothing in this
+component declares as its `source` titles `03.08.05` *Media Transport*, nothing in this
 system transports media. Rev 3's home for storage confidentiality here is `03.13.08`,
 which the component asserts directly (uploads SecureTransport deny plus the uploads SSE-KMS
 / workload CMK addresses). No `related-requirement` prop is needed on `03.13.11`; the
@@ -108,7 +108,7 @@ pull request in this repo's history is the proof that they fire.
 
 **Two CMKs, not one.** A CMK is a trust boundary. A single key would mean the Lambda role
 handling patient data also holds `kms:Decrypt` against the audit trail of its own
-behavior — the exact separation an evidence vault exists to create. The thing being
+behavior, the exact separation an evidence vault exists to create. The thing being
 audited must not hold the key to its own audit trail.
 
 **Two, not three.** Splitting the trail key from the vault key buys a boundary nothing in
@@ -116,12 +116,12 @@ this threat model crosses, at six more resources. The brief names *"too much sco
 the first way the capstone fails.
 
 **Every key policy starts with the account-root statement.** Omitting it makes a CMK
-permanently unmanageable and undeletable — there is no recovery path, including through
+permanently unmanageable and undeletable, there is no recovery path, including through
 AWS support.
 
 **Least privilege derived from the code, not the resource list.** The Lambda role's
 permissions come from the two API calls `terraform/lambda/handler.py` actually makes
-(`put_item`, `put_object`), plus the `sqs:SendMessage` grant GAP-06's DLQ requires — not
+(`put_item`, `put_object`), plus the `sqs:SendMessage` grant GAP-06's DLQ requires, not
 from the resource names. No `DescribeTable` (boto3's `Table()` is lazy and never calls
 it), no `GetObject` (the handler only writes), no `kms:Encrypt`, `kms:ReEncrypt*`, or
 `GenerateDataKeyWithoutPlaintext`.
@@ -133,12 +133,12 @@ once the action narrows, that entry grants nothing.
 
 **No KMS statement on the Lambda inline policy, deliberately.** The workload key policy
 names the Lambda role directly as a `Principal`, which is complete authorization on its
-own. DynamoDB never required one — it encrypts under a grant it holds itself rather than
+own. DynamoDB never required one, it encrypts under a grant it holds itself rather than
 under the caller's identity. Adding the statement would have been defensible as
 defense-in-depth; describing it as *required* would not.
 
 **Decrypt is split on the evidence CMK.** Matches AWS's published
-`AllowCloudTrailDecryptTrail` shape — service-principal `Decrypt` unconditioned, while
+`AllowCloudTrailDecryptTrail` shape, service-principal `Decrypt` unconditioned, while
 `Encrypt`/`Describe` keep the confused-deputy `aws:SourceArn` pin. Account `:root` already
 covers operator decrypt via IAM.
 
@@ -148,14 +148,14 @@ covers operator decrypt via IAM.
 dressed up.** Object Lock protects object *versions*, not the bucket, and only until
 retention expires. COMPLIANCE mode would close only one of the three open deletion paths
 (see *Residual risk*). GOVERNANCE keeps the sandbox destroyable. A production or CJIS
-deployment inverts this — retention measured in years makes COMPLIANCE the only
+deployment inverts this, retention measured in years makes COMPLIANCE the only
 defensible mode.
 
 **The source primitive's `DenyBucketDeletion` bucket policy was dropped on purpose.** In a
 single sandbox account, the operator the policy denies is the operator who can rewrite it.
 It raises the appearance of enforcement without moving who holds control.
 
-**No `force_destroy` on the vault.** Teardown is deliberately manual — empty, then destroy.
+**No `force_destroy` on the vault.** Teardown is deliberately manual, empty, then destroy.
 `force_destroy` would hand Terraform exactly the bulk-delete capability the vault exists to
 deny. The *trail* bucket does carry `force_destroy = true`: different trust story, high
 volume raw logs rather than curated evidence.
@@ -165,7 +165,7 @@ bundles; the trail holds high-volume raw API logs. Mixing them would apply Objec
 retention to log noise and muddy chain of custody.
 
 **`aws:SourceArn` pins must agree with the trail name.** Disagree and Terraform still
-applies clean while CloudTrail silently stops delivering — `plan` cannot catch it. Trail
+applies clean while CloudTrail silently stops delivering, `plan` cannot catch it. Trail
 name and every `SourceArn` (KMS plus both bucket-policy statements) use one identifier.
 
 ### Network
@@ -187,13 +187,13 @@ fail `CreateNetworkInterface` even when the attachment is in the same plan.
 
 **Two roles, not one.** `gha_plan` runs on any ref and can only read; `gha_apply` is
 restricted to `refs/heads/main`. The separation is enforced by the trust policy's `sub`
-condition — not by the workflow file, which anyone with push access can edit.
+condition, not by the workflow file, which anyone with push access can edit.
 
 **SSE-S3 on state, not a CMK.** Keeps `kms:Decrypt` out of `gha_plan`, so the
 workload/evidence two-CMK boundary survives CI's read path. Verified rather than
 asserted: `simulate-principal-policy` on `gha_plan` returns `implicitDeny` for
 `kms:Decrypt`, `s3:PutObject`, and `iam:CreateRole`. It buys nothing against
-`gha_apply`, which holds `kms:*` on `Resource "*"` — subsumed by the
+`gha_apply`, which holds `kms:*` on `Resource "*"`, subsumed by the
 admin-equivalence recorded under *Residual risk*.
 
 **`use_lockfile` instead of `dynamodb_table`.** S3-native locking, GA in Terraform 1.11.
@@ -201,7 +201,7 @@ The DynamoDB table is deprecated and would be a second resource to manage and gr
 
 **`required_version = ">= 1.15.8"` tracks the version recorded in the remote state object,**
 not the version that introduced `use_lockfile`. Terraform refuses to read state written by
-a newer binary, so a lower floor does not create a working path — it relocates the failure
+a newer binary, so a lower floor does not create a working path, it relocates the failure
 from a clear error at `init` to a confusing one at `plan`.
 
 ### Detection layer
@@ -226,7 +226,7 @@ cannot fail is a cosmetic CI step.
 ### Policy gate
 
 **`--all-namespaces` is mandatory.** The packages are `cgep.*`, and Conftest defaults to
-`main`, which exits 0 with zero tests — a silent green. Called out in the README.
+`main`, which exits 0 with zero tests, a silent green. Called out in the README.
 
 **Control mappings are taken verbatim from `GAPS.md`, not invented.** Every deny message
 cites its control ID and the GAP it maps to.
@@ -239,11 +239,11 @@ identifier for the same requirement.
 
 **`MP.L2-3.8.9` / `03.08.09` was deliberately *not* used for the evidence vault.** That
 practice covers the confidentiality of backup information, says nothing about deletion,
-and describes a backup location rather than an evidence store — wrong family, wrong verb.
+and describes a backup location rather than an evidence store, wrong family, wrong verb.
 It is also already assigned to GAP-04, so reusing it would spend one practice twice.
 
 **`get-object-lock-configuration` returning `GOVERNANCE / Days: 30` is evidence the
-configuration applied — never evidence the vault is immutable.** It returns the same green
+configuration applied, never evidence the vault is immutable.** It returns the same green
 answer on a vault the account can delete. This matters for Layer 4: the brief is blunt that
 *"an OSCAL file that doesn't accurately describe the system is worse than having none."*
 
@@ -366,7 +366,7 @@ decision, not an oversight.
 
 2. **Layer 3 AC 9 is a declared deviation, not a pass.** It asks that `terraform plan` show
    the OIDC resources as additions. They were applied before the audit ran, so plan shows
-   `No changes`. The equivalent — and stronger — evidence is that plan reports zero
+   `No changes`. The equivalent, and stronger, evidence is that plan reports zero
    changes, replacements, or destroys against any Layer 1 resource.
 
 3. **No `terraform apply` inside PRs #1–#4.** The Layer 1 baseline is applied once by hand
@@ -397,7 +397,7 @@ decision, not an oversight.
 **`gha_apply` holds `iam:*` on `Resource "*"`, making it account-admin-equivalent.** It can
 attach `AdministratorAccess` to itself. Accepted trade-off: assuming the role requires a
 token minted from `refs/heads/main`, push access to which is held only by the repo owner,
-who is already account admin — so the escalation grants nothing to anyone who lacks it.
+who is already account admin, so the escalation grants nothing to anyone who lacks it.
 Narrowing it to the exact action set the stack needs is deferred until the workflow exists
 and that set is known. The M11 checkov skips document that choice; they do not shrink it.
 
@@ -405,20 +405,20 @@ and that set is known. The M11 checkov skips document that choice; they do not s
 targeted signals from management events. They do not watch data-plane abuse, Config
 drift rules, GuardDuty findings, or the other CIS filter patterns. An unsubscribed SNS
 topic alerts nobody until an operator runs `aws sns subscribe`. A nightly
-`terraform plan -detailed-exitcode` is not real-time detection — a hand-change in the
+`terraform plan -detailed-exitcode` is not real-time detection, a hand-change in the
 console can sit until 08:00 UTC before the badge turns red.
 
 **`terraform plan` in CI must run with `-lock=false`.** `ReadOnlyAccess` carries no
 `s3:PutObject`, so the plan role cannot write the `.tflock` object. This is a locked
-decision — a plan step without `-lock=false` is a build defect, not a discovery.
+decision, a plan step without `-lock=false` is a build defect, not a discovery.
 
 **Three deletion paths stay open on the evidence vault:**
-1. An empty vault is deletable — `DeleteBucket` fails only because Object Lock keeps the
+1. An empty vault is deletable, `DeleteBucket` fails only because Object Lock keeps the
    bucket non-empty.
 2. A version older than `evidence_retention_days` is deletable with ordinary
    `s3:DeleteObjectVersion`.
 3. Unexpired GOVERNANCE retention is bypassable by a holder of
-   `s3:BypassGovernanceRetention` — here, the operator.
+   `s3:BypassGovernanceRetention`, here, the operator.
 
 **Bucket default retention applies only to PUTs without Object Lock headers.** A writer
 holding `s3:PutObjectRetention` can set a short retain-until date, and COMPLIANCE would not
@@ -426,9 +426,9 @@ close that either. Reachable today only by the operator already named above; it 
 distinct risk once Layer 3 has its own writer.
 
 **Unknown-at-plan-time values.** Terraform omits attributes unknown at plan time from
-`planned_values` entirely — they are absent, not empty. On a from-scratch bootstrap plan
-this would false-fire every rule that asserts a value Terraform computes at apply time —
-a CMK ARN, a log-group ARN, subnet IDs, a rendered bucket policy — and fail one open. It
+`planned_values` entirely, they are absent, not empty. On a from-scratch bootstrap plan
+this would false-fire every rule that asserts a value Terraform computes at apply time,
+a CMK ARN, a log-group ARN, subnet IDs, a rendered bucket policy, and fail one open. It
 does not affect the intended path, where the gate plans against remote state of an
 applied stack and every ARN is known. Handling it properly means cross-checking
 `resource_changes[].change.after_unknown`; documented rather than built.
@@ -443,10 +443,10 @@ access log, the Lambda `Errors` metric, and the X-Ray trace.
 **The trail bucket holds two encryption generations, and no policy in this suite was
 watching.** Until 2026-08-08 the trail carried no `kms_key_id`, so CloudTrail PUT each
 log object with an explicit `x-amz-server-side-encryption: AES256` header. Bucket default
-encryption is a *fallback* — it supplies a setting when the request specifies none, and
+encryption is a *fallback*, it supplies a setting when the request specifies none, and
 has no power to override a caller that states its own. The bucket therefore reported
 `aws:kms` with the evidence CMK while its objects were **SSE-S3, under a key S3 manages
-internally** — not an AWS-managed KMS key such as `aws/s3`, which would still have a key
+internally**, not an AWS-managed KMS key such as `aws/s3`, which would still have a key
 policy and an audit trail. Setting `kms_key_id` on the trail fixed it. Encryption is
 per-object and not retroactive, so the 754 objects written before the fix should be taken
 as remaining `AES256`, with everything after CMK-encrypted.
@@ -456,7 +456,7 @@ as remaining `AES256`, with everything after CMK-encrypted.
 history; after the fix, `LatestDeliveryError` stayed empty, `LatestDeliveryTime` advanced,
 and a newly delivered object returned `aws:kms` under the evidence CMK. **Mechanism, not
 observation:** those three together are what establish delivery survived, because
-`IsLogging` reads `true` even while every delivery fails on a KMS `AccessDenied` — that is
+`IsLogging` reads `true` even while every delivery fails on a KMS `AccessDenied`, that is
 documented CloudTrail behaviour, never reproduced here. **Inferred:** that *all* 754
 pre-fix objects were SSE-S3 (six samples plus the mechanism, not an exhaustive scan), and
 that the CMK's two CloudTrail key-policy statements were never exercised (sound from the
@@ -471,7 +471,7 @@ in `policies/` references `aws_cloudtrail` at all. Writing one is Layer 2 work d
 by choice, not Layer 3 work blocked by architecture.
 
 **The rule has to be written in the guarded form, and the first draft of this section got
-that wrong** — which is worth recording, because it is the same defect the M7 audit spent
+that wrong**, which is worth recording, because it is the same defect the M7 audit spent
 two rounds removing from the suite. A bare `kms_key_id != ""` **fails open on `null`**:
 in Rego, `null != ""` succeeds, the helper holds, `not helper` fails, and the gate goes
 green. Proven on a *synthetic* input (not this repo's live plan shape):
@@ -481,8 +481,8 @@ green. Proven on a *synthetic* input (not this repo's live plan shape):
 | `kms_key_id != ""` | yes | **no** |
 | `is_string(kms_key_id)` then `!= ""` | yes | yes |
 
-The guarded shape — deny via `not helper(...)` after the helper rejects both `""` and
-`null` with `is_string` — is the convention any *new* rule (including a trail
+The guarded shape, deny via `not helper(...)` after the helper rejects both `""` and
+`null` with `is_string`, is the convention any *new* rule (including a trail
 `kms_key_id` check) must follow. This repo's live plan does **not** currently exercise
 that hole for the three existing helpers: `sse_configured` sees `kms_master_key_id: ""`
 on AES256 (so `!= ""` is false and the GAP-01 deny fires), `has_dynamodb_cmk` sees an
@@ -492,7 +492,7 @@ emit `null` for other optional attributes in the same plan; on a synthetic null 
 unguarded form goes vacuous. Do not copy `!= ""` into a new rule.
 
 **Coverage alone would not have caught this either.** GAP-01's rule filters
-`bucket.name == "uploads"` per Decision 43, so it never evaluated the trail bucket — but
+`bucket.name == "uploads"` per Decision 43, so it never evaluated the trail bucket, but
 had it done so it would have **passed green anyway**, because the bucket's SSE
 configuration genuinely was `aws:kms` with the CMK. The scoping is not what let this
 through; the *altitude* is. A bucket-level encryption check is not evidence that the
@@ -510,7 +510,7 @@ expire. Separately, the versioning resource's destroy attempts
 `PutBucketVersioning Status=Suspended`, which S3 rejects on an Object Lock bucket. Neither
 is visible in `terraform plan`.
 
-**`tfplan.json` is gitignored** — it embeds the account ID in ARNs.
+**`tfplan.json` is gitignored**, it embeds the account ID in ARNs.
 
 ---
 
@@ -531,7 +531,7 @@ is visible in `terraform plan`.
   required patterns are known.
 
 **README debt:**
-- Teardown runbook — the empty-then-destroy sequence for the Object Lock vault, and the
+- Teardown runbook, the empty-then-destroy sequence for the Object Lock vault, and the
   versioning-suspend failure.
 - Teardown warning and import note for the OIDC provider: it is the account's only one and
   is now Terraform-managed, so `terraform destroy` here would break GitHub OIDC for
@@ -542,11 +542,11 @@ is visible in `terraform plan`.
 - The evidence key's `Allow CloudTrail encrypt trail logs` Sid names a verb rather than
   the two actions it actually grants (`kms:GenerateDataKey*`, `kms:DescribeKey`).
 
-**Verification — done 2026-08-08, against the live account:**
+**Verification, done 2026-08-08, against the live account:**
 - `make test` returns a valid `submission_id`, so the scoped GAP-07 policy did not break
   the intake path.
 - `terraform plan` reports **No changes**; `conftest test --all-namespaces` is 10/10 at
-  exit 0; `opa test` is 39/39. All three re-run against the post-fix configuration — the
+  exit 0; `opa test` is 39/39. All three re-run against the post-fix configuration, the
   first pass graded a plan generated before `kms_key_id` was added, which proved nothing
   about the code being shipped.
 - Post-apply checks deferred from PRs #3–#4, all confirmed: trail `IsMultiRegionTrail`,
@@ -560,8 +560,8 @@ is visible in `terraform plan`.
 
 **Owed, and reclassified after the 2026-08-08 sweep:**
 - **A Rego rule for `aws_cloudtrail` requiring a CMK on the trail.** Layer 2, and it closes
-  the defect found above at plan time. It must use the guarded form —
-  `is_string(kms_key_id)` before `!= ""`, denied via `not has_trail_cmk(trail)` — because
+  the defect found above at plan time. It must use the guarded form:
+  `is_string(kms_key_id)` before `!= ""`, denied via `not has_trail_cmk(trail)`, because
   a bare `kms_key_id != ""` fails open on the `null` a create plan renders. Deferred by
   choice, not by architecture; see *Residual risk*.
 - More broadly: the suite maps 1:1 to the eight starter gaps, so **nothing polices the
@@ -570,35 +570,35 @@ is visible in `terraform plan`.
 - A post-apply `head-object` spot-check on the trail bucket, as defence in depth behind
   that rule rather than as the primary control.
 
-**Owed — confirmed Rego fail-open defects (M9 audit, 2026-08-09).** Named specifically
+**Owed: confirmed Rego fail-open defects (M9 audit, 2026-08-09).** Named specifically
 because the OSCAL still cites these packages as enforcement. Fixing them is a Layer 2
 suite rewrite plus tests; `policies/` is out of this PR's staged set. Same finding class
 as the trail rule above.
 
-- **O1 — uploads companions join by Terraform label, not bucket id.**
+- **O1: uploads companions join by Terraform label, not bucket id.**
   `versioning_enabled` (`mp_3_08_09:20`), `sse_configured` (`sc_3_13_11:21`), and
   `secure_transport_on_bucket` (`sc_3_13_08:35`) match `resource.name == "uploads"`, never
   `values.bucket`. Repoint a companion at another bucket while keeping the Terraform label
-  and all three packages return `[]` — GAP-01, GAP-03 and GAP-04 live at once with the gate
+  and all three packages return `[]`, GAP-01, GAP-03 and GAP-04 live at once with the gate
   green.
-- **O2 — `cgep.ac_3_01_05` collapses when `policy` is unknown at plan time.** On a
+- **O2: `cgep.ac_3_01_05` collapses when `policy` is unknown at plan time.** On a
   greenfield plan (the state the README teardown section invites a grader to produce)
   Terraform omits `policy` from `planned_values`, `json.unmarshal` at
   `ac_3_01_05_least_privilege.rego:38` is undefined, and the rule returns `[]` even for
   `Action: "*"`. The suite reports green on the exact first apply that stands up the
   wildcard policy.
-- **O3 — `cgep.ac_3_01_05` is blind to `NotAction`.**
+- **O3: `cgep.ac_3_01_05` is blind to `NotAction`.**
   `{"Effect":"Allow","NotAction":"iam:DeleteUser","Resource":"*"}` returns `[]`. Broader
   than the `dynamodb:*` wildcard GAP-07 describes.
-- **O4 — `has_dynamodb_cmk` never checks `enabled`.**
+- **O4: `has_dynamodb_cmk` never checks `enabled`.**
   `{"enabled": false, "kms_key_arn": "arn:..."}` passes while DynamoDB encrypts under the
-  AWS-owned key — GAP-02 verbatim.
-- **O5 — `has_dlq` is the bare-reference form sibling policies wrote comments against.**
+  AWS-owned key, GAP-02 verbatim.
+- **O5: `has_dlq` is the bare-reference form sibling policies wrote comments against.**
   `fn.values.dead_letter_config[_]` (`si_3_14_06`); contrast `au_3_03_01:15` ("assert the
   HCL literals, not list presence") and `sc_3_13_01:15` ("count, not bare ref").
   `[{"target_arn": ""}]` returns `[]`.
-- **O6 — null-vs-`""` convention (pairs with the Residual-risk truth table).** The
+- **O6: null-vs-`""` convention (pairs with the Residual-risk truth table).** The
   unguarded `!= ""` form fails open on synthetic `null` input. These three helpers are
   *not* currently reached by that shape in this repo's plan (`""`, omitted key, or
-  Required field) — keep the recommendation for any new rule; do not claim the defect is
+  Required field), keep the recommendation for any new rule; do not claim the defect is
   live today.

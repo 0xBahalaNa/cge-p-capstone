@@ -1,4 +1,4 @@
-# CGE-P Capstone — governing the Acme Health Patient Intake API
+# CGE-P Capstone: governing the Acme Health Patient Intake API
 
 **Primary framework: CMMC Level 2**, mapped to NIST SP 800-171 Rev 3.
 Framework rationale, design trade-offs and known limits are in [WRITEUP.md](WRITEUP.md).
@@ -20,14 +20,14 @@ The application code is unchanged from
 ### No AWS account needed
 
 ```bash
-# Layer 2 — policy unit tests (39 tests, 7 policies)
+# Layer 2: policy unit tests (39 tests, 7 policies)
 opa test policies/
 
-# Tier 0 — IaC static analysis (same tools the rubric grades)
+# Tier 0: IaC static analysis (same tools the rubric grades)
 terraform fmt -check -recursive
 checkov -d terraform/    # exits 1: 20 known findings, all in Known limits below
 
-# Layer 4 — OSCAL schema validation (trestle only validates inside a workspace)
+# Layer 4: OSCAL schema validation (trestle only validates inside a workspace)
 W=$(mktemp -d) && (cd "$W" && trestle init --local >/dev/null)
 mkdir -p "$W/component-definitions/cge-p-capstone" "$W/profiles/cge-p-minimum"
 cp oscal/components/cge-p-capstone-component.json \
@@ -40,21 +40,21 @@ cp oscal/profiles/cge-p-minimum.json \
 ### Needs AWS credentials for this account
 
 ```bash
-# Layer 1 — the baseline is applied and drift-free
+# Layer 1: the baseline is applied and drift-free
 cd terraform && terraform init && terraform plan     # expect: No changes
 
-# Layer 2 — the suite against a real plan (NOT the fixtures)
+# Layer 2: the suite against a real plan (NOT the fixtures)
 terraform plan -out=tfplan && terraform show -json tfplan > ../tfplan.json
 cd .. && conftest test --all-namespaces -p policies/ tfplan.json
 
-# Detection — two CloudWatch alarms route to an SNS topic (no subscription in Terraform)
+# Detection: two CloudWatch alarms route to an SNS topic (no subscription in Terraform)
 aws cloudwatch describe-alarms --alarm-name-prefix acme-health-intake --query 'MetricAlarms[].AlarmName'
-# Wire a real endpoint out of band — subscription is deliberately not in this stack:
+# Wire a real endpoint out of band: subscription is deliberately not in this stack:
 # aws sns subscribe --topic-arn <security_alerts_topic_arn> --protocol email --notification-endpoint you@example.com
 # Prove the route end to end (subscribe first, or watch the topic's NumberOfMessagesPublished metric):
 # aws sns publish --topic-arn <security_alerts_topic_arn> --subject "route test" --message "route test"
 
-# Layer 3 — the evidence chain
+# Layer 3: the evidence chain
 export EVIDENCE_BUCKET=$(terraform -chdir=terraform output -raw evidence_bucket)
 scripts/verify-evidence.sh s3://$EVIDENCE_BUCKET/runs/5af88e1-20260810T010058Z/
 ```
@@ -77,7 +77,7 @@ single easiest way to fool yourself into believing this gate works.
 The red PR reintroduces GAP-01 by flipping the uploads bucket back to `AES256`. `Plan`
 succeeds, `Policy check` fails with the `SC.L2-3.13.11` deny message, and `main` requires
 the `gate` status check, so merge is blocked for anyone without admin bypass.
-`enforce_admins` is false — the repo owner (who is also the account admin) still sees a
+`enforce_admins` is false, so the repo owner (who is also the account admin) still sees a
 bypass affordance rather than a hard-disabled button. PR #10 was closed unmerged, so the
 demonstration still stands.
 
@@ -85,7 +85,7 @@ demonstration still stands.
 
 ## The four layers
 
-**Layer 1 — Terraform GRC baseline.** Two customer-managed KMS keys with rotation, split by
+**Layer 1: Terraform GRC baseline.** Two customer-managed KMS keys with rotation, split by
 trust boundary: one for the workload, one for evidence. An S3 evidence vault under Object Lock
 (GOVERNANCE, 30 days) and versioning. A multi-region CloudTrail with log file validation,
 writing to a dedicated bucket under the evidence CMK and delivering to CloudWatch Logs for
@@ -93,20 +93,20 @@ two targeted metric-filter alarms (unauthorized API, root usage) plus VPC flow l
 Hardening overrides that close six of eight starter gaps fully, and two in part (GAP-06
 reserved concurrency, GAP-08 WAF).
 
-**Layer 2 — OPA policy suite.** Seven Rego policies, ten deny rules, 39 unit tests. Each
+**Layer 2: OPA policy suite.** Seven Rego policies, ten deny rules, 39 unit tests. Each
 policy carries a metadata block naming the framework, control IDs, severity and remediation,
 and each deny message cites its CMMC practice so a developer sees the control, not just a
 failure. The policies read `terraform show -json` planned values rather than parsing HCL.
 
-**Layer 3 — GitHub Actions pipeline.** One workflow: plan, policy check, apply on merge to
+**Layer 3: GitHub Actions pipeline.** One workflow: plan, policy check, apply on merge to
 `main`, Cosign keyless signature via GitHub OIDC, upload to the evidence vault, plus a
 nightly scheduled drift job that fails loud on any plan delta. A pull request run never
 receives apply-role credentials.
 
-**Layer 4 — OSCAL component definition.** Eight implemented requirements against the NIST SP
+**Layer 4: OSCAL component definition.** Eight implemented requirements against the NIST SP
 800-171 Rev 3 catalog, each citing the real Terraform addresses that implement it, the Rego
 package that guards it (record generation under 03.03.03 and several boundary halves are
-Terraform-only and unpoliced — each description says which, and names the package that covers
+Terraform-only and unpoliced, each description says which, and names the package that covers
 the half a sibling requirement cites), its CMMC practice ID, and a link to the signed bundle in
 the vault.
 
